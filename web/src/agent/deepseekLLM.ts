@@ -40,9 +40,9 @@ export class DeepSeekLLM implements LLM {
     this.tools = tools
   }
 
-  async think(context: MemoryItem[]): Promise<Thought> {
+  async think(context: MemoryItem[], tools?: Tool[]): Promise<Thought> {
     const messages = this.buildMessages(context)
-    const response = await this.chat(messages, true)
+    const response = await this.chat(messages, true, tools)
 
     const choice = response.choices?.[0]
     if (!choice) {
@@ -75,9 +75,10 @@ export class DeepSeekLLM implements LLM {
   async answerWithObservation(
     context: MemoryItem[],
     _observation: string,
+    tools?: Tool[],
   ): Promise<string> {
     const messages = this.buildMessages(context)
-    const response = await this.chat(messages, false)
+    const response = await this.chat(messages, false, tools)
     return response.choices?.[0]?.message?.content || '抱歉，整理结果时出错了。'
   }
 
@@ -108,11 +109,12 @@ export class DeepSeekLLM implements LLM {
     })
   }
 
-  private async chat(messages: DeepSeekMessage[], includeTools: boolean): Promise<DeepSeekResponse> {
+  private async chat(messages: DeepSeekMessage[], includeTools: boolean, toolsOverride?: Tool[]): Promise<DeepSeekResponse> {
     const body: Record<string, unknown> = { model: this.model, messages }
+    const activeTools = toolsOverride ?? this.tools
 
-    if (includeTools && this.tools.length > 0) {
-      body.tools = this.tools.map((tool) => ({
+    if (includeTools && activeTools.length > 0) {
+      body.tools = activeTools.map((tool) => ({
         type: 'function',
         function: {
           name: tool.name,

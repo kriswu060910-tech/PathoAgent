@@ -95,14 +95,15 @@ export function useChat() {
   )
 
   const sendMessage = useCallback(
-    async (content: string) => {
-      if (!content.trim() || isLoading) return
+    async (content: string, enableSearch?: boolean, images?: Message['images']) => {
+      if ((!content.trim() && !images?.length) || isLoading) return
 
       const trimmed = content.trim()
       const userMessage: Message = {
         id: generateId(),
         role: 'user',
         content: trimmed,
+        images,
         timestamp: Date.now(),
         status: 'done',
       }
@@ -132,7 +133,7 @@ export function useChat() {
         const conversation =
           conversations.find((c) => c.id === activeId) ?? activeConversation
         const history = [...conversation.messages, userMessage]
-        const request = { conversationId: activeId, messages: history, content: trimmed }
+        const request = { conversationId: activeId, messages: history, content: trimmed, enableSearch, images }
 
         if (agentService.streamMessage) {
           await agentService.streamMessage(request, (chunk) => {

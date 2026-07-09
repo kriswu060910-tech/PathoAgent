@@ -1,18 +1,32 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import type { MessageAttachment } from '../types/agent'
 
 interface ChatInputProps {
-  onSend: (content: string) => void
+  onSend: (content: string, enableSearch?: boolean, images?: MessageAttachment[]) => void
   disabled?: boolean
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
 
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [content, setContent] = useState('')
+  const [enableSearch, setEnableSearch] = useState(false)
+  const [images, setImages] = useState<MessageAttachment[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!content.trim() || disabled) return
-    onSend(content)
+    if ((!content.trim() && images.length === 0) || disabled) return
+    onSend(content, enableSearch, images.length > 0 ? images : undefined)
     setContent('')
+    setImages([])
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -22,19 +36,100 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   }
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    const imageFiles = files.filter((f) => f.type.startsWith('image/'))
+    const newImages = await Promise.all(
+      imageFiles.map(async (file) => ({
+        dataUrl: await fileToDataUrl(file),
+        name: file.name,
+        type: 'image' as const,
+      })),
+    )
+    setImages((prev) => [...prev, ...newImages])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const removeImage = (index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const canSend = content.trim() || images.length > 0
+
   return (
     <form className="chat-input" onSubmit={handleSubmit}>
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="输入消息，按 Enter 发送，Shift + Enter 换行…"
-        rows={1}
-        disabled={disabled}
-      />
-      <button type="submit" disabled={disabled || !content.trim()}>
-        发送
-      </button>
+      {images.length > 0 && (
+        <div className="image-preview-bar">
+          {images.map((img, i) => (
+            <div key={i} className="image-preview-item">
+              <img src={img.dataUrl} alt={img.name} />
+              <button
+                type="button"
+                className="image-preview-remove"
+                onClick={() => removeImage(i)}
+                title="移除图片"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="chat-input-toolbar">
+        <button
+          type="button"
+          className={`search-toggle ${enableSearch ? 'active' : ''}`}
+          onClick={() => setEnableSearch((v) => !v)}
+          title={enableSearch ? '已开启联网搜索' : '点击开启联网搜索'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+          <span>联网搜索</span>
+        </button>
+        <button
+          type="button"
+          className="search-toggle"
+          onClick={() => fileInputRef.current?.click()}
+          title="上传图片"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+          <span>图片</span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+      </div>
+      <div className="chat-input-row">
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={
+            images.length > 0
+              ? '描述你的问题（可选），按 Enter 发送…'
+              : enableSearch
+                ? '输入消息（将联网搜索），按 Enter 发送…'
+                : '输入消息，按 Enter 发送，Shift + Enter 换行…'
+          }
+          rows={1}
+          disabled={disabled}
+        />
+        <button type="submit" disabled={disabled || !canSend}>
+          发送
+        </button>
+      </div>
     </form>
   )
 }

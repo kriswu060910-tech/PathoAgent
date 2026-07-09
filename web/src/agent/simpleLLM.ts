@@ -9,7 +9,7 @@ export class SimpleLLM implements LLM {
     // _tools 保留给未来扩展
   }
 
-  async think(context: MemoryItem[]): Promise<Thought> {
+  async think(context: MemoryItem[], _tools?: Tool[]): Promise<Thought> {
     const lastUserMessage = [...context]
       .reverse()
       .find((item) => item.role === 'user')
@@ -40,6 +40,7 @@ export class SimpleLLM implements LLM {
   async answerWithObservation(
     context: MemoryItem[],
     observation: string,
+    _tools?: Tool[],
   ): Promise<string> {
     const lastUserMessage = [...context]
       .reverse()

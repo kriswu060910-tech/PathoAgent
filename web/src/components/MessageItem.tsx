@@ -23,6 +23,18 @@ export function MessageItem({ message }: MessageItemProps) {
         )}
       </div>
       <div className="message-body">
+        {message.images && message.images.length > 0 && (
+          <div className="message-images">
+            {message.images.map((img, i) => (
+              <img
+                key={i}
+                src={img.dataUrl}
+                alt={img.name}
+                className="message-image"
+              />
+            ))}
+          </div>
+        )}
         <div className="message-content">
           {message.content || (message.status === 'sending' ? '' : '')}
           {message.status === 'streaming' && <span className="cursor" />}

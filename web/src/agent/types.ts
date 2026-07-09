@@ -60,8 +60,8 @@ export interface Thought {
 
 /** LLM 抽象接口：由具体模型实现完整的感知-思考-行动循环 */
 export interface LLM {
-  think(context: MemoryItem[]): Promise<Thought>
-  answerWithObservation(context: MemoryItem[], observation: string): Promise<string>
+  think(context: MemoryItem[], tools?: Tool[]): Promise<Thought>
+  answerWithObservation(context: MemoryItem[], observation: string, tools?: Tool[]): Promise<string>
 }
 
 /** Agent 配置 */

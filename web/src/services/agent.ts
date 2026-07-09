@@ -1,5 +1,6 @@
 import type { AgentRequest, AgentResponse, AgentService } from '../types/agent'
 import { ReactAgent } from '../agent'
+import type { ImageAttachment } from '../agent/vision'
 
 /**
  * 使用 ReactAgent 替换原来的 MockAgentService。
@@ -23,9 +24,16 @@ export class AgentServiceImpl implements AgentService {
     return this.agents.get(conversationId)!
   }
 
+  private toImageAttachments(images?: AgentRequest['images']): ImageAttachment[] | undefined {
+    return images?.map((img) => ({ dataUrl: img.dataUrl, name: img.name }))
+  }
+
   async sendMessage(request: AgentRequest): Promise<AgentResponse> {
     const agent = this.getAgent(request.conversationId)
-    const answer = await agent.run(request.content)
+    const answer = await agent.run(request.content, undefined, {
+      enableSearch: request.enableSearch,
+      images: this.toImageAttachments(request.images),
+    })
     return { content: answer, done: true }
   }
 
@@ -42,6 +50,9 @@ export class AgentServiceImpl implements AgentService {
         answer = event.content
         onChunk(chunk)
       }
+    }, {
+      enableSearch: request.enableSearch,
+      images: this.toImageAttachments(request.images),
     })
   }
 }
