@@ -1,0 +1,63 @@
+import type { Conversation } from '../types/agent'
+import { formatTime } from '../utils'
+
+interface SidebarProps {
+  conversations: Conversation[]
+  activeId: string
+  onSelect: (id: string) => void
+  onCreate: () => void
+  onDelete: (id: string) => void
+}
+
+export function Sidebar({
+  conversations,
+  activeId,
+  onSelect,
+  onCreate,
+  onDelete,
+}: SidebarProps) {
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-header">
+        <h2>Cookie</h2>
+        <button type="button" className="new-chat-btn" onClick={onCreate}>
+          + 新对话
+        </button>
+      </div>
+
+      <nav className="conversation-list">
+        {conversations.map((conversation) => (
+          <button
+            key={conversation.id}
+            type="button"
+            className={`conversation-item ${
+              conversation.id === activeId ? 'active' : ''
+            }`}
+            onClick={() => onSelect(conversation.id)}
+          >
+            <span className="conversation-title">{conversation.title}</span>
+            <span className="conversation-meta">
+              {formatTime(conversation.updatedAt)}
+            </span>
+            <button
+              type="button"
+              className="delete-btn"
+              title="删除对话"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(conversation.id)
+              }}
+            >
+              ×
+            </button>
+          </button>
+        ))}
+      </nav>
+
+      <div className="sidebar-footer">
+        <p>React + TypeScript Cookie UI</p>
+      </div>
+    </aside>
+  )
+}
+
