@@ -16,8 +16,13 @@ function getLauncherUrl(): string {
   return getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || '/api/launcher'
 }
 
+const DEFAULT_SERVICES: Services = {
+  patho: { label: 'Qwen2.5-VL 病理分析', running: true, healthy: true, port: 8001 },
+  cellpose: { label: 'Cellpose 细胞分割', running: true, healthy: true, port: 8002 },
+}
+
 export function useServices() {
-  const [services, setServices] = useState<Services>({})
+  const [services, setServices] = useState<Services>(DEFAULT_SERVICES)
   const [loading, setLoading] = useState('')
 
   const fetchStatus = useCallback(async () => {
