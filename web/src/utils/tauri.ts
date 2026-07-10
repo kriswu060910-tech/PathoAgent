@@ -10,13 +10,27 @@ export function isTauri(): boolean {
 }
 
 export async function startLauncher(): Promise<{ ok: boolean; message: string }> {
-  if (!isTauri()) return { ok: false, message: '非桌面环境，无法启动 Launcher' }
+  // Tauri 桌面环境：通过 Rust invoke 启动
+  if (isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const msg = await invoke<string>('start_launcher')
+      return { ok: true, message: msg }
+    } catch (err) {
+      return { ok: false, message: typeof err === 'string' ? err : String(err) }
+    }
+  }
+
+  // 浏览器开发环境：通过 Vite 中间件启动
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const msg = await invoke<string>('start_launcher')
-    return { ok: true, message: msg }
+    const res = await fetch('/api/launch', { method: 'POST' })
+    if (res.ok) {
+      const data = await res.json()
+      return { ok: true, message: data.message || 'Launcher 已启动' }
+    }
+    return { ok: false, message: `请求失败 (${res.status})` }
   } catch (err) {
-    return { ok: false, message: typeof err === 'string' ? err : String(err) }
+    return { ok: false, message: `无法连接 Vite 开发服务器: ${err instanceof Error ? err.message : String(err)}` }
   }
 }
 

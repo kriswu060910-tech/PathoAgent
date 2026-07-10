@@ -231,8 +231,17 @@ class ServiceManager:
         for name, svc in self._services.items():
             if self._is_port_open(svc.port):
                 continue
-            asyncio.run(self.start(name, wait=False))
-            logger.info(f"正在启动 {svc.label} ...")
+            # 直接同步启动（wait=False 不需要 async sleep）
+            handle = self._processes.get(name)
+            if handle is not None and handle.proc.poll() is None:
+                continue
+            log_file = self._open_log(svc)
+            popen_kwargs: dict = {"stdout": log_file, "stderr": subprocess.STDOUT}
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            proc = subprocess.Popen([PYTHON, "-u", str(svc.script), *svc.args], **popen_kwargs)
+            self._processes[name] = _ProcessHandle(proc, log_file)
+            logger.info(f"启动 {svc.label} (pid={proc.pid})")
 
     def shutdown(self) -> None:
         """停止所有托管的服务进程。"""

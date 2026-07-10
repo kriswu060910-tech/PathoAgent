@@ -25,6 +25,12 @@ PYTHON = os.environ.get(
 # ---------------------------------------------------------------------------
 
 SERVICES = {
+    "auth": {
+        "label": "用户认证服务",
+        "script": str(PROJECT_ROOT / "auth" / "server.py"),
+        "args": [],
+        "port": 8100,
+    },
     "cellpose": {
         "label": "Cellpose 细胞分割",
         "script": str(PROJECT_ROOT / "cellpose" / "server.py"),

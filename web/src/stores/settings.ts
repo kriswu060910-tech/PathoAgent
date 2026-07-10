@@ -17,6 +17,7 @@ export interface AppSettings {
   pathoApiUrl: string
   cellposeApiUrl: string
   launcherApiUrl: string
+  authApiUrl: string
 }
 
 const STORAGE_KEY = 'cookie-agent-settings'
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = Object.freeze({
   pathoApiUrl: isDev ? '/api/patho' : 'http://localhost:8001',
   cellposeApiUrl: isDev ? '/api/cellpose' : 'http://localhost:8002',
   launcherApiUrl: isDev ? '/api/launcher' : 'http://localhost:8099',
+  authApiUrl: isDev ? '/api/auth' : 'http://localhost:8100',
 })
 
 function loadSettings(): AppSettings {
@@ -56,11 +58,13 @@ function loadSettings(): AppSettings {
         if (merged.pathoApiUrl === 'http://localhost:8001') { merged.pathoApiUrl = '/api/patho'; migrated = true }
         if (merged.cellposeApiUrl === 'http://localhost:8002') { merged.cellposeApiUrl = '/api/cellpose'; migrated = true }
         if (merged.launcherApiUrl === 'http://localhost:8099') { merged.launcherApiUrl = '/api/launcher'; migrated = true }
+        if (!merged.authApiUrl || merged.authApiUrl === 'http://localhost:8100') { merged.authApiUrl = '/api/auth'; migrated = true }
       } else {
         // 生产模式下代理路径还原为直连地址
         if (merged.pathoApiUrl === '/api/patho') { merged.pathoApiUrl = 'http://localhost:8001'; migrated = true }
         if (merged.cellposeApiUrl === '/api/cellpose') { merged.cellposeApiUrl = 'http://localhost:8002'; migrated = true }
         if (merged.launcherApiUrl === '/api/launcher') { merged.launcherApiUrl = 'http://localhost:8099'; migrated = true }
+        if (merged.authApiUrl === '/api/auth') { merged.authApiUrl = 'http://localhost:8100'; migrated = true }
       }
 
       // 迁移后写回 localStorage，避免每次加载重复迁移

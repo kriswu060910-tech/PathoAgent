@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useServices } from '../hooks/useServices'
 import { getSettings } from '../stores/settings'
-import { isTauri, startLauncher } from '../utils/tauri'
+import { startLauncher } from '../utils/tauri'
 
 function statusColor(connected: boolean, s: { healthy: boolean; crashed?: boolean; running: boolean }): string {
   if (!connected) return '#6b7280'
@@ -153,16 +153,14 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
                   <code className="service-diag-value">{launcherUrl || '(未配置)'}</code>
                 </div>
                 <div className="service-disconnected-actions">
-                  {isTauri() && (
-                    <button
-                      className="service-action-btn start-launcher"
-                      onClick={handleStartLauncher}
-                      disabled={startingLauncher}
-                    >
-                      {startingLauncher && <span className="service-spinner" />}
-                      {startingLauncher ? '启动中...' : '🚀 启动 Launcher'}
-                    </button>
-                  )}
+                  <button
+                    className="service-action-btn start-launcher"
+                    onClick={handleStartLauncher}
+                    disabled={startingLauncher}
+                  >
+                    {startingLauncher && <span className="service-spinner" />}
+                    {startingLauncher ? '启动中...' : '🚀 启动 Launcher'}
+                  </button>
                   <button
                     className="service-action-btn retry"
                     onClick={handleRetry}

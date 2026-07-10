@@ -7,7 +7,7 @@ interface SettingsPanelProps {
   onClose: () => void
 }
 
-type Section = 'llm' | 'vision' | 'search' | 'backend'
+type Section = 'llm' | 'vision' | 'search' | 'backend' | 'guide'
 
 interface ValidationResult {
   name: string
@@ -150,6 +150,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     { key: 'vision', label: '视觉识别' },
     { key: 'search', label: '联网搜索' },
     { key: 'backend', label: '后端服务' },
+    { key: 'guide', label: '部署指南' },
   ]
 
   const successCount = results?.filter((r) => r.ok).length ?? 0
@@ -228,6 +229,128 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 {field('病理分析后端', 'pathoApiUrl', '/api/patho')}
                 {field('Cellpose 后端', 'cellposeApiUrl', '/api/cellpose')}
                 {field('Launcher 管理器', 'launcherApiUrl', '/api/launcher')}
+                {field('认证服务', 'authApiUrl', '/api/auth')}
+              </div>
+            )}
+
+            {activeSection === 'guide' && (
+              <div className="settings-section settings-guide">
+                <h3 className="guide-title">📖 部署指南</h3>
+
+                <div className="guide-block">
+                  <h4>🖥️ 环境要求</h4>
+                  <ul>
+                    <li>GPU：NVIDIA 显卡，显存 ≥ 6GB（推荐 8GB+）</li>
+                    <li>Python：3.10+（推荐 Conda 环境）</li>
+                    <li>依赖：<code>pip install fastapi uvicorn transformers accelerate</code></li>
+                  </ul>
+                </div>
+
+                <div className="guide-block guide-service">
+                  <h4>🔬 服务一：Patho-R1 病理分析后端 <span className="guide-port">:8001</span></h4>
+                  <p className="guide-desc">基于 Qwen2.5-VL-3B 多模态模型，支持病理图像分析、区域聚焦、多图对比。</p>
+
+                  <h5>下载模型</h5>
+                  <pre className="guide-code">
+{`# 使用 modelscope 下载（国内推荐）
+pip install modelscope
+modelscope download --model Qwen/Qwen2.5-VL-3B-Instruct \\
+  --local_dir D:/hf_models/Qwen2.5-VL-3B-Instruct
+
+# 或使用 huggingface
+pip install huggingface_hub
+huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct \\
+  --local_dir D:/hf_models/Qwen2.5-VL-3B-Instruct`}
+                  </pre>
+
+                  <h5>启动命令</h5>
+                  <pre className="guide-code">
+{`cd D:\\agent
+python Patho-R1/server.py --model qwen --port 8001
+
+# 指定模型路径（如不在默认位置）
+python Patho-R1/server.py --model qwen --model-path D:/hf_models/Qwen2.5-VL-3B-Instruct`}
+                  </pre>
+
+                  <h5>验证</h5>
+                  <pre className="guide-code">curl http://localhost:8001/health</pre>
+                </div>
+
+                <div className="guide-block guide-service">
+                  <h4>🧬 服务二：Cellpose 细胞分割后端 <span className="guide-port">:8002</span></h4>
+                  <p className="guide-desc">基于 Cellpose 深度学习模型，支持细胞核/细胞质分割、轮廓提取。</p>
+
+                  <h5>安装依赖</h5>
+                  <pre className="guide-code">
+{`# 在 conda patho 环境中安装
+conda activate patho
+pip install cellpose[gui]
+pip install fastapi uvicorn python-multipart`}
+                  </pre>
+
+                  <h5>启动命令</h5>
+                  <pre className="guide-code">
+{`cd D:\\agent
+python cellpose/server.py --model cyto3 --port 8002
+
+# 可选模型：cyto3（细胞质）、nuclei（细胞核）、cyto2
+python cellpose/server.py --model nuclei --port 8002`}
+                  </pre>
+
+                  <h5>验证</h5>
+                  <pre className="guide-code">curl http://localhost:8002/health</pre>
+                </div>
+
+                <div className="guide-block">
+                  <h4>🚀 一键启动（推荐）</h4>
+                  <p>运行项目根目录的 <code>start.bat</code>，自动启动 Launcher 和所有后端服务：</p>
+                  <pre className="guide-code">
+{`# 方式一：双击 start.bat
+# 方式二：命令行
+cd D:\\agent
+python -m launcher.main --auto-start`}
+                  </pre>
+                  <p>Launcher 会自动管理所有服务的启停、健康检查和日志记录。</p>
+                </div>
+
+                <div className="guide-block">
+                  <h4>🏗️ 服务架构</h4>
+                  <div className="guide-arch">
+                    <div className="guide-arch-row">
+                      <span className="guide-arch-box frontend">前端 (React)</span>
+                      <span className="guide-arch-arrow">→</span>
+                      <span className="guide-arch-box launcher">Launcher :8099</span>
+                    </div>
+                    <div className="guide-arch-row indent">
+                      <span className="guide-arch-arrow">↕</span>
+                    </div>
+                    <div className="guide-arch-row">
+                      <span className="guide-arch-box patho">Patho-R1 :8001</span>
+                      <span className="guide-arch-box cellpose">Cellpose :8002</span>
+                      <span className="guide-arch-box auth">Auth :8100</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="guide-block">
+                  <h4>❓ 常见问题</h4>
+                  <details className="guide-faq">
+                    <summary>显存不足 (CUDA Out of Memory)</summary>
+                    <p>Qwen2.5-VL-3B 约需 5-6GB 显存。确保关闭其他 GPU 占用程序，或使用 <code>--dtype float16</code> 参数。</p>
+                  </details>
+                  <details className="guide-faq">
+                    <summary>Cellpose 首次运行很慢</summary>
+                    <p>Cellpose 首次使用某个模型时会自动下载权重文件（约 100MB），需要网络连接。后续启动会直接使用缓存。</p>
+                  </details>
+                  <details className="guide-faq">
+                    <summary>模型路径找不到</summary>
+                    <p>检查 <code>Patho-R1/server.py</code> 中的模型路径配置，确保与下载路径一致。可通过 <code>--model-path</code> 参数指定。</p>
+                  </details>
+                  <details className="guide-faq">
+                    <summary>端口被占用</summary>
+                    <p>使用 <code>netstat -ano | findstr :8001</code> 查找占用进程，或用 <code>--port</code> 参数换端口后在设置中更新地址。</p>
+                  </details>
+                </div>
               </div>
             )}
           </div>

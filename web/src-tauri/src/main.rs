@@ -55,14 +55,18 @@ fn resolve_python_path() -> String {
 
 #[tauri::command]
 async fn start_launcher(state: tauri::State<'_, LauncherState>) -> Result<String, String> {
-    // compare_exchange 保证原子性：仅当 current == true 时交换为 false
     if state.starting.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         return Err("Launcher 正在启动中，请稍候...".into());
     }
 
-    let result = spawn_launcher(&state);
-    state.starting.store(false, Ordering::SeqCst);
-    result
+    // RAII guard：确保 panic 时也能重置 starting 标志
+    struct ResetGuard<'a>(&'a AtomicBool);
+    impl<'a> Drop for ResetGuard<'a> {
+        fn drop(&mut self) { self.0.store(false, Ordering::SeqCst); }
+    }
+    let _guard = ResetGuard(&state.starting);
+
+    spawn_launcher(&state)
 }
 
 fn spawn_launcher(state: &LauncherState) -> Result<String, String> {

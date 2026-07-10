@@ -312,6 +312,232 @@ body {
   color: var(--text-secondary);
 }
 
+/* Config hint card (empty state) */
+.welcome-config-hint {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 16px;
+  background: rgba(251, 191, 36, 0.06);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: var(--radius-md);
+  text-align: left;
+  max-width: 400px;
+}
+
+.welcome-config-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.welcome-config-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.welcome-config-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.welcome-config-desc {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.welcome-config-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.welcome-config-btn:hover {
+  background: rgba(251, 191, 36, 0.25);
+}
+
+/* Config banner (during conversation) */
+.chat-config-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  margin: -12px -12px 12px;
+  font-size: 12px;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+  border-bottom: 1px solid rgba(251, 191, 36, 0.15);
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.chat-config-banner:hover {
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.chat-config-banner-link {
+  margin-left: auto;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+/* Settings guide section */
+.settings-guide {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.guide-title {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: var(--text-h);
+}
+
+.guide-block {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.guide-block:last-child {
+  border-bottom: none;
+}
+
+.guide-block h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.guide-block h5 {
+  margin: 12px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.guide-block p {
+  margin: 0 0 6px;
+  color: var(--text);
+}
+
+.guide-block ul {
+  margin: 4px 0;
+  padding-left: 1.2em;
+}
+
+.guide-block li {
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.guide-port {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--accent);
+  margin-left: 6px;
+}
+
+.guide-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.guide-code {
+  margin: 6px 0;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.guide-service {
+  background: rgba(129, 140, 248, 0.03);
+  border: 1px solid rgba(129, 140, 248, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+/* Architecture diagram */
+.guide-arch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 0;
+}
+
+.guide-arch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.guide-arch-row.indent {
+  padding-left: 60px;
+}
+
+.guide-arch-box {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.guide-arch-box.frontend { background: rgba(129, 140, 248, 0.15); color: var(--accent); border-color: rgba(129, 140, 248, 0.3); }
+.guide-arch-box.launcher { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); }
+.guide-arch-box.patho { background: rgba(74, 222, 128, 0.15); color: #4ade80; border-color: rgba(74, 222, 128, 0.3); }
+.guide-arch-box.cellpose { background: rgba(96, 165, 250, 0.15); color: #60a5fa; border-color: rgba(96, 165, 250, 0.3); }
+.guide-arch-box.auth { background: rgba(244, 114, 182, 0.15); color: #f472b6; border-color: rgba(244, 114, 182, 0.3); }
+
+.guide-arch-arrow {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* FAQ */
+.guide-faq {
+  margin-top: 6px;
+}
+
+.guide-faq summary {
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.guide-faq summary:hover {
+  color: var(--accent-hover);
+}
+
+.guide-faq p {
+  margin: 4px 0 8px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 /* Message */
 .message {
   display: flex;

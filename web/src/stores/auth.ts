@@ -1,24 +1,94 @@
 /**
  * 用户认证与配置管理。
  *
- * 每个用户拥有独立的 API 配置（AppSettings），登录后自动加载。
- * 用户数据（含密码哈希）存储在 localStorage 中。
+ * 优先使用远程认证服务（FastAPI + SQLite），支持跨设备登录。
+ * 远程不可用时降级为 localStorage 本地模式。
  *
- * 安全说明：
- * - 密码使用 Web Crypto API (SHA-256 + 随机 salt) 哈希存储
- * - 会话有效期 7 天，过期自动登出
- * - 注意：localStorage 对同源 JS 可见，此方案适用于单用户桌面应用，
- *   不适用于多租户或高安全场景
+ * 远程模式：
+ * - 登录/注册 → POST /auth/login, /auth/register
+ * - 设置同步 → GET/PUT /auth/settings
+ * - JWT 令牌存 localStorage，7 天过期
+ *
+ * 本地模式（降级）：
+ * - 用户数据存 localStorage，仅当前设备可用
  */
 
-import { type AppSettings, DEFAULT_SETTINGS, updateSettings, resetSettings, onSettingsPersist } from './settings'
+import { type AppSettings, DEFAULT_SETTINGS, updateSettings, resetSettings, onSettingsPersist, getSettings } from './settings'
 
-const USERS_KEY = 'cookie-agent-users'
 const SESSION_KEY = 'cookie-agent-session'
+const SESSION_TOKEN_KEY = 'cookie-agent-token'
 const SESSION_EXPIRY_KEY = 'cookie-agent-session-expiry'
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
+const LOCAL_USERS_KEY = 'cookie-agent-users'
 
 export interface UserProfile {
+  username: string
+  displayName: string
+  settings: AppSettings
+  /** 远程模式为 true，本地模式为 false */
+  remote: boolean
+}
+
+// --- 远程 API 调用 ---
+
+function getAuthUrl(): string {
+  return getSettings().authApiUrl || '/api/auth'
+}
+
+async function apiCall(path: string, options?: { method?: string; body?: Record<string, unknown>; token?: string }): Promise<Record<string, unknown>> {
+  const method = options?.method || (options?.body ? 'POST' : 'GET')
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (options?.token) headers['Authorization'] = `Bearer ${options.token}`
+  const res = await fetch(`${getAuthUrl()}${path}`, {
+    method,
+    headers,
+    body: options?.body ? JSON.stringify(options.body) : undefined,
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error((data as Record<string, string>).detail || `请求失败 (${res.status})`)
+  }
+  return res.json()
+}
+
+async function remoteRegister(username: string, password: string, displayName: string) {
+  const data = await apiCall('/auth/register', { body: { username, password, displayName } })
+  return { token: data.token as string, username: data.username as string, displayName: data.displayName as string }
+}
+
+async function remoteLogin(username: string, password: string) {
+  const data = await apiCall('/auth/login', { body: { username, password } })
+  return { token: data.token as string, username: data.username as string, displayName: data.displayName as string }
+}
+
+async function remoteFetchSettings(token: string): Promise<AppSettings | null> {
+  try {
+    const data = await apiCall('/auth/settings', { token })
+    const settings = data.settings as Record<string, string>
+    if (settings && Object.keys(settings).length > 0) {
+      return { ...DEFAULT_SETTINGS, ...settings } as AppSettings
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+async function remoteSaveSettings(token: string, settings: AppSettings) {
+  try {
+    const res = await fetch(`${getAuthUrl()}/auth/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ settings }),
+    })
+    if (res.status === 401) {
+      // token 过期，清除会话
+      clearSession()
+    }
+  } catch { /* 网络错误 — 静默失败，本地已保存 */ }
+}
+
+// --- 本地降级模式 ---
+
+interface LocalUser {
   username: string
   passwordHash: string
   salt: string
@@ -27,113 +97,71 @@ export interface UserProfile {
   createdAt: number
 }
 
-interface UsersStore {
-  [username: string]: UserProfile
-}
-
-function loadUsers(): UsersStore {
+function loadLocalUsers(): Record<string, LocalUser> {
   try {
-    const raw = localStorage.getItem(USERS_KEY)
+    const raw = localStorage.getItem(LOCAL_USERS_KEY)
     if (raw) return JSON.parse(raw)
   } catch { /* ignore */ }
   return {}
 }
 
-function saveUsers(users: UsersStore) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users))
+function saveLocalUsers(users: Record<string, LocalUser>) {
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users))
 }
 
-function loadSession(): string | null {
+function localHash(password: string, salt: string): string {
+  let h = 0
+  const s = salt + password
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h) + s.charCodeAt(i)
+    h |= 0
+  }
+  return `h_${Math.abs(h).toString(36)}_${s.length}`
+}
+
+function localGenerateSalt(): string {
+  const arr = new Uint8Array(16)
+  crypto.getRandomValues(arr)
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+// --- 会话管理 ---
+
+let currentUser: UserProfile | null = null
+let currentToken: string | null = null
+const listeners = new Set<() => void>()
+
+function notify() { listeners.forEach((fn) => fn()) }
+
+function loadSession(): { username: string; token: string | null; remote: boolean } | null {
   const username = localStorage.getItem(SESSION_KEY)
   if (!username) return null
-
-  const expiryStr = localStorage.getItem(SESSION_EXPIRY_KEY)
-  if (expiryStr) {
-    const expiry = parseInt(expiryStr, 10)
-    if (Date.now() > expiry) {
-      // 会话已过期，清除
-      localStorage.removeItem(SESSION_KEY)
-      localStorage.removeItem(SESSION_EXPIRY_KEY)
-      return null
-    }
+  const expiry = localStorage.getItem(SESSION_EXPIRY_KEY)
+  if (expiry && Date.now() > parseInt(expiry, 10)) {
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(SESSION_TOKEN_KEY)
+    localStorage.removeItem(SESSION_EXPIRY_KEY)
+    return null
   }
-  return username
+  const token = localStorage.getItem(SESSION_TOKEN_KEY)
+  const remote = !!token
+  return { username, token, remote }
 }
 
-function saveSession(username: string) {
+function saveSession(username: string, token: string | null) {
   localStorage.setItem(SESSION_KEY, username)
+  if (token) localStorage.setItem(SESSION_TOKEN_KEY, token)
+  else localStorage.removeItem(SESSION_TOKEN_KEY)
   localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_TTL_MS))
 }
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem(SESSION_TOKEN_KEY)
   localStorage.removeItem(SESSION_EXPIRY_KEY)
 }
 
-// --- 密码哈希 (Web Crypto API) ---
-
-function generateSalt(): string {
-  const array = new Uint8Array(16)
-  crypto.getRandomValues(array)
-  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-async function hashPassword(password: string, salt: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(salt + password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-/**
- * 向后兼容：验证旧版 simpleHash 格式的密码。
- * 旧格式为 `h_<base36>_<length>`，验证成功后自动迁移为 SHA-256。
- */
-async function verifyAndUpgradePassword(
-  password: string,
-  profile: UserProfile,
-): Promise<boolean> {
-  // 新版 SHA-256 验证
-  if (profile.salt) {
-    const hash = await hashPassword(password, profile.salt)
-    return hash === profile.passwordHash
-  }
-
-  // 旧版 simpleHash 兼容
-  const legacyHash = simpleLegacyHash(password)
-  if (legacyHash !== profile.passwordHash) return false
-
-  // 验证通过，静默升级为 SHA-256
-  const newSalt = generateSalt()
-  const newHash = await hashPassword(password, newSalt)
-  profile.passwordHash = newHash
-  profile.salt = newSalt
-  const users = loadUsers()
-  users[profile.username] = profile
-  saveUsers(users)
-  return true
-}
-
-/** 旧版哈希函数，仅用于迁移验证 */
-function simpleLegacyHash(str: string): string {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash |= 0
-  }
-  return `h_${Math.abs(hash).toString(36)}_${str.length}`
-}
-
-// --- 认证状态管理 ---
-
-let currentUser: UserProfile | null = null
-const listeners = new Set<() => void>()
-
-function notify() {
-  listeners.forEach((fn) => fn())
-}
+// --- 初始化 ---
 
 let initialized = false
 
@@ -141,98 +169,140 @@ function init() {
   if (initialized) return
   initialized = true
 
+  // 设置变更时同步到远程
   onSettingsPersist((s) => {
+    if (currentUser?.remote && currentToken) {
+      remoteSaveSettings(currentToken, s)
+    }
     if (currentUser) {
       currentUser = { ...currentUser, settings: s }
-      const users = loadUsers()
-      users[currentUser.username] = currentUser
-      saveUsers(users)
     }
   })
 
-  const sessionUser = loadSession()
-  if (sessionUser) {
-    const users = loadUsers()
-    if (users[sessionUser]) {
-      currentUser = users[sessionUser]
-      updateSettings(currentUser.settings)
+  // 恢复会话
+  const session = loadSession()
+  if (session) {
+    if (session.remote && session.token) {
+      // 远程模式：从服务端拉取设置
+      currentUser = { username: session.username, displayName: session.username, settings: { ...DEFAULT_SETTINGS }, remote: true }
+      currentToken = session.token
+      remoteFetchSettings(session.token).then((settings) => {
+        if (!currentUser || currentUser.username !== session.username) return
+        if (settings) {
+          currentUser = { ...currentUser, settings }
+          updateSettings(settings)
+          notify()
+        }
+      })
+    } else {
+      // 本地模式
+      const users = loadLocalUsers()
+      const user = users[session.username]
+      if (user) {
+        currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false }
+        updateSettings(user.settings)
+      }
     }
   }
 }
+
+// --- 公开 API ---
 
 export function subscribeAuth(cb: () => void) {
   listeners.add(cb)
   return () => listeners.delete(cb)
 }
 
-export function getCurrentUser(): UserProfile | null {
-  return currentUser
-}
+export function getCurrentUser(): UserProfile | null { return currentUser }
+export function isLoggedIn(): boolean { return currentUser !== null }
 
-export function isLoggedIn(): boolean {
-  return currentUser !== null
-}
-
-export async function register(
-  username: string,
-  password: string,
-  displayName: string,
-): Promise<{ ok: boolean; error?: string }> {
+export async function register(username: string, password: string, displayName: string): Promise<{ ok: boolean; error?: string }> {
   const trimmedUser = username.trim().toLowerCase()
   if (!trimmedUser) return { ok: false, error: '用户名不能为空' }
   if (trimmedUser.length < 2) return { ok: false, error: '用户名至少 2 个字符' }
   if (!password || password.length < 4) return { ok: false, error: '密码至少 4 个字符' }
 
-  const users = loadUsers()
+  // 尝试远程注册
+  try {
+    const result = await remoteRegister(trimmedUser, password, displayName)
+    currentToken = result.token
+    currentUser = { username: result.username, displayName: result.displayName, settings: { ...DEFAULT_SETTINGS }, remote: true }
+    saveSession(result.username, result.token)
+    updateSettings(currentUser.settings)
+    notify()
+    return { ok: true }
+  } catch {
+    // 远程不可用，降级为本地注册
+  }
+
+  // 本地注册
+  const users = loadLocalUsers()
   if (users[trimmedUser]) return { ok: false, error: '用户名已存在' }
-
-  const salt = generateSalt()
-  const passwordHash = await hashPassword(password, salt)
-
-  const profile: UserProfile = {
+  const salt = localGenerateSalt()
+  const profile: LocalUser = {
     username: trimmedUser,
-    passwordHash,
+    passwordHash: localHash(password, salt),
     salt,
     displayName: displayName.trim() || trimmedUser,
     settings: { ...DEFAULT_SETTINGS },
     createdAt: Date.now(),
   }
   users[trimmedUser] = profile
-  saveUsers(users)
-
-  currentUser = profile
-  saveSession(trimmedUser)
+  saveLocalUsers(users)
+  currentUser = { username: profile.username, displayName: profile.displayName, settings: profile.settings, remote: false }
+  currentToken = null
+  saveSession(trimmedUser, null)
   updateSettings(profile.settings)
   notify()
   return { ok: true }
 }
 
-export async function login(
-  username: string,
-  password: string,
-): Promise<{ ok: boolean; error?: string }> {
+export async function login(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
   const trimmedUser = username.trim().toLowerCase()
-  const users = loadUsers()
+
+  // 尝试远程登录
+  try {
+    const result = await remoteLogin(trimmedUser, password)
+    currentToken = result.token
+    currentUser = { username: result.username, displayName: result.displayName, settings: { ...DEFAULT_SETTINGS }, remote: true }
+    saveSession(result.username, result.token)
+    // 异步拉取服务端设置
+    remoteFetchSettings(result.token).then((settings) => {
+      if (settings && currentUser?.username === result.username) {
+        currentUser = { ...currentUser, settings }
+        updateSettings(settings)
+        notify()
+      }
+    })
+    notify()
+    return { ok: true }
+  } catch {
+    // 远程不可用，降级为本地登录
+  }
+
+  // 本地登录
+  const users = loadLocalUsers()
   const user = users[trimmedUser]
-  if (!user) return { ok: false, error: '用户不存在' }
-
-  const valid = await verifyAndUpgradePassword(password, user)
-  if (!valid) return { ok: false, error: '密码错误' }
-
-  currentUser = user
-  saveSession(trimmedUser)
+  if (!user) return { ok: false, error: '用户不存在（认证服务不可用）' }
+  if (localHash(password, user.salt) !== user.passwordHash) return { ok: false, error: '密码错误' }
+  currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false }
+  currentToken = null
+  saveSession(trimmedUser, null)
   updateSettings(user.settings)
   notify()
   return { ok: true }
 }
 
 export function logout() {
-  if (currentUser) {
-    const users = loadUsers()
-    users[currentUser.username] = currentUser
-    saveUsers(users)
+  if (currentUser && !currentUser.remote) {
+    const users = loadLocalUsers()
+    if (users[currentUser.username] && currentToken === null) {
+      users[currentUser.username] = { ...users[currentUser.username], settings: getSettings() }
+      saveLocalUsers(users)
+    }
   }
   currentUser = null
+  currentToken = null
   clearSession()
   resetSettings()
   notify()

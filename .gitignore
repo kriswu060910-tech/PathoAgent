@@ -27,3 +27,4 @@ cellpose/models/
 .idea/
 *.swp
 *.swo
+data/  

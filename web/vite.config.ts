@@ -9,18 +9,40 @@ const PYTHON = process.env.PYTHON_PATH || 'python'
 
 function launcherPlugin(): Plugin {
   let proc: ChildProcess | null = null
+
+  function spawnLauncher() {
+    if (proc && proc.exitCode === null) {
+      return { ok: true, message: `Launcher 已在运行 (pid=${proc.pid})` }
+    }
+    proc = spawn(PYTHON, ['-u', '-m', 'launcher.main', '--auto-start'], {
+      stdio: 'inherit',
+      cwd: PROJECT_ROOT,
+    })
+    console.log(`[auto-launcher] 已启动 launcher (pid=${proc.pid})`)
+    proc.on('exit', (code) => {
+      console.log(`[auto-launcher] launcher 退出 (code=${code})`)
+      proc = null
+    })
+    return { ok: true, message: `Launcher 已启动 (pid=${proc.pid})` }
+  }
+
   return {
     name: 'auto-launcher',
     configureServer(server) {
-      proc = spawn(PYTHON, ['-u', '-m', 'launcher.main'], {
-        stdio: 'inherit',
-        cwd: PROJECT_ROOT,
+      // 前端可通过 POST /api/launch 手动启动 Launcher
+      server.middlewares.use((req, res, next) => {
+        if (req.url === '/api/launch' && req.method === 'POST') {
+          const result = spawnLauncher()
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(result))
+          return
+        }
+        next()
       })
-      console.log(`[auto-launcher] 已启动 launcher (pid=${proc.pid})`)
-      proc.on('exit', (code) => {
-        console.log(`[auto-launcher] launcher 退出 (code=${code})`)
-        proc = null
-      })
+
+      // 开发时自动启动
+      spawnLauncher()
+
       server.httpServer?.on('close', () => {
         if (proc) {
           console.log('[auto-launcher] 停止 launcher')
@@ -70,6 +92,12 @@ export default defineConfig(({ mode }) => {
           target: 'http://localhost:8099',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/launcher/, ''),
+        },
+        // 用户认证服务
+        '/api/auth': {
+          target: 'http://localhost:8100',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/auth/, ''),
         },
       },
     },

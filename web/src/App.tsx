@@ -40,7 +40,7 @@ function AuthenticatedApp() {
           isLoading={isLoading}
           onOpenSettings={() => setSettingsOpen(true)}
         />
-        <MessageList messages={activeConversation.messages} />
+        <MessageList messages={activeConversation.messages} onOpenSettings={() => setSettingsOpen(true)} />
         <ChatInput onSend={sendMessage} disabled={isLoading} />
       </main>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
