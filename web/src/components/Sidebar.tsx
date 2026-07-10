@@ -8,6 +8,7 @@ interface SidebarProps {
   onSelect: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
+  onOpenSettings: () => void
 }
 
 export function Sidebar({
@@ -16,6 +17,7 @@ export function Sidebar({
   onSelect,
   onCreate,
   onDelete,
+  onOpenSettings,
 }: SidebarProps) {
   return (
     <aside className="sidebar">
@@ -59,7 +61,9 @@ export function Sidebar({
       </nav>
 
       <div className="sidebar-footer">
-        <p>React + TypeScript Cookie UI</p>
+        <button type="button" className="settings-trigger-btn" onClick={onOpenSettings}>
+          ⚙ 设置
+        </button>
       </div>
     </aside>
   )

@@ -1,12 +1,15 @@
+import { useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { ChatHeader } from './components/ChatHeader'
 import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
 import { SplashScreen } from './components/SplashScreen'
+import { SettingsPanel } from './components/SettingsPanel'
 import { useChat } from './hooks/useChat'
 import './App.css'
 
 function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const {
     conversations,
     activeId,
@@ -28,6 +31,7 @@ function App() {
           onSelect={switchConversation}
           onCreate={createNewConversation}
           onDelete={deleteConversation}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         <main className="chat-container">
           <ChatHeader
@@ -38,6 +42,7 @@ function App() {
           <ChatInput onSend={sendMessage} disabled={isLoading} />
         </main>
       </div>
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </>
   )
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { getSettings } from '../stores/settings'
 
 interface ServiceInfo {
   label: string
@@ -11,7 +12,9 @@ interface ServiceInfo {
 
 type Services = Record<string, ServiceInfo>
 
-const API = import.meta.env.VITE_LAUNCHER_API_URL || '/api/launcher'
+function getLauncherUrl(): string {
+  return getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || '/api/launcher'
+}
 
 export function useServices() {
   const [services, setServices] = useState<Services>({})
@@ -19,7 +22,7 @@ export function useServices() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/status`)
+      const res = await fetch(`${getLauncherUrl()}/status`)
       if (res.ok) setServices(await res.json())
     } catch {
       // launcher 未启动时静默忽略
@@ -36,12 +39,12 @@ export function useServices() {
     setLoading(name)
     try {
       const action = running ? 'stop' : 'start'
-      await fetch(`${API}/${action}/${name}`, { method: 'POST' })
+      await fetch(`${getLauncherUrl()}/${action}/${name}`, { method: 'POST' })
       const maxWait = running ? 10 : 120
       for (let i = 0; i < maxWait; i++) {
         await new Promise((r) => setTimeout(r, 1000))
         try {
-          const res = await fetch(`${API}/status`)
+          const res = await fetch(`${getLauncherUrl()}/status`)
           if (res.ok) {
             const data = await res.json()
             const s = data[name]
@@ -62,7 +65,7 @@ export function useServices() {
 
   const fetchLogs = useCallback(async (name: string): Promise<string> => {
     try {
-      const res = await fetch(`${API}/logs/${name}?lines=80`)
+      const res = await fetch(`${getLauncherUrl()}/logs/${name}?lines=80`)
       if (res.ok) {
         const data = await res.json()
         return data.logs || '暂无日志'

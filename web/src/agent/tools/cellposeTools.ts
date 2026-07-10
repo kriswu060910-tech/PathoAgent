@@ -2,7 +2,9 @@ import type { Tool } from '../types'
 import { apiPost, processImages, imagePrefix, parseOptionalFloat } from './shared'
 import type { GetImages } from './shared'
 
-const API_URL = import.meta.env.VITE_CELLPOSE_API_URL || '/api/cellpose'
+function getApiUrl(envUrl?: string): string {
+  return envUrl || import.meta.env.VITE_CELLPOSE_API_URL || '/api/cellpose'
+}
 
 interface CellInfo {
   id: number
@@ -57,7 +59,8 @@ function formatMeasureTable(cells: CellMeasurement[]): string {
   return `| # | ${unit} | 圆度 | 长×短轴 | 方向 |\n|---|--------|------|---------|------|\n${rows.join('\n')}`
 }
 
-export function createCellposeTools(getImages: GetImages): Tool[] {
+export function createCellposeTools(getImages: GetImages, apiUrl?: string): Tool[] {
+  const baseUrl = getApiUrl(apiUrl)
   return [
     {
       name: 'cell_segment',
@@ -72,7 +75,7 @@ export function createCellposeTools(getImages: GetImages): Tool[] {
         const diameter = parseOptionalFloat(args.diameter)
 
         return processImages(images, async (image, idx) => {
-          const data = await apiPost<SegmentResponse>(`${API_URL}/segment`, {
+          const data = await apiPost<SegmentResponse>(`${baseUrl}/segment`, {
             image: image.dataUrl, diameter: diameter ?? null,
           })
           const prefix = imagePrefix(images.length, idx, image.name)
@@ -98,7 +101,7 @@ export function createCellposeTools(getImages: GetImages): Tool[] {
         const diameter = parseOptionalFloat(args.diameter)
 
         return processImages(images, async (image, idx) => {
-          const data = await apiPost<MeasureResponse>(`${API_URL}/measure`, {
+          const data = await apiPost<MeasureResponse>(`${baseUrl}/measure`, {
             image: image.dataUrl, diameter: diameter ?? null, pixel_size: pixelSize ?? null,
           })
           const prefix = imagePrefix(images.length, idx, image.name)

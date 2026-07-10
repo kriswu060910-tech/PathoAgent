@@ -1,5 +1,5 @@
 import type { AnnotationBox, Tool } from '../types'
-import { analyzeImages, detectObjectsWithEdges, type ImageAttachment } from '../vision'
+import { analyzeImages, detectObjectsWithEdges, type ImageAttachment, type VisionConfig } from '../vision'
 import { NO_IMAGE_MSG, type GetImages } from './shared'
 
 type OnAnnotate = (boxes: AnnotationBox[]) => void
@@ -14,6 +14,7 @@ function createImageAnalysisTool(
   description: string,
   parameters: Record<string, string>,
   buildPrompt: (args: Record<string, string>) => string,
+  visionCfg?: VisionConfig,
 ): Tool {
   return {
     name,
@@ -22,12 +23,12 @@ function createImageAnalysisTool(
     async execute(args) {
       const images = getImages()
       if (!images.length) return NO_IMAGE_MSG
-      return buildPrefix(images) + await analyzeImages(images, buildPrompt(args))
+      return buildPrefix(images) + await analyzeImages(images, buildPrompt(args), visionCfg)
     },
   }
 }
 
-export function createVisionTools(getImages: GetImages, onAnnotate?: OnAnnotate): Tool[] {
+export function createVisionTools(getImages: GetImages, onAnnotate?: OnAnnotate, visionCfg?: VisionConfig): Tool[] {
   return [
     createImageAnalysisTool(
       getImages,
@@ -37,6 +38,7 @@ export function createVisionTools(getImages: GetImages, onAnnotate?: OnAnnotate)
       (args) => args.language
         ? `请提取图片中所有${args.language}文字，保持原始排版和层级结构。如有表格请用 markdown 表格格式输出。`
         : '请提取图片中所有文字内容，保持原始排版和层级结构。如有表格请用 markdown 表格格式输出。',
+      visionCfg,
     ),
     {
       name: 'annotate_objects',
@@ -48,7 +50,7 @@ export function createVisionTools(getImages: GetImages, onAnnotate?: OnAnnotate)
 
         const allBoxes: AnnotationBox[] = []
         for (const image of images) {
-          const boxes = await detectObjectsWithEdges(image)
+          const boxes = await detectObjectsWithEdges(image, undefined, visionCfg)
           allBoxes.push(...boxes)
         }
 

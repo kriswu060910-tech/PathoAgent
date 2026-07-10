@@ -2,17 +2,20 @@ import type { Tool } from '../types'
 import { apiPost, processImages, imagePrefix, PATHO_HINT } from './shared'
 import type { GetImages } from './shared'
 
-const API_URL = import.meta.env.VITE_PATHO_API_URL || '/api/patho'
+function getApiUrl(envUrl?: string): string {
+  return envUrl || import.meta.env.VITE_PATHO_API_URL || '/api/patho'
+}
 
-async function callPathoAPI(image: string, question: string, style: string): Promise<{
+async function callPathoAPI(baseUrl: string, image: string, question: string, style: string): Promise<{
   thinking: string
   answer: string
   raw: string
 }> {
-  return apiPost(`${API_URL}/analyze`, { image, question, style })
+  return apiPost(`${baseUrl}/analyze`, { image, question, style })
 }
 
-export function createPathologyTools(getImages: GetImages): Tool[] {
+export function createPathologyTools(getImages: GetImages, apiUrl?: string): Tool[] {
+  const baseUrl = getApiUrl(apiUrl)
   return [
     {
       name: 'pathology_analyze',
@@ -34,7 +37,7 @@ export function createPathologyTools(getImages: GetImages): Tool[] {
         }
 
         return processImages(images, async (image, idx) => {
-          const { thinking, answer } = await callPathoAPI(image.dataUrl, question, style)
+          const { thinking, answer } = await callPathoAPI(baseUrl, image.dataUrl, question, style)
           const prefix = imagePrefix(images.length, idx, image.name)
           if (args.region) {
             return `${prefix}**区域：** ${args.region}\n\n**推理过程：**\n${thinking}\n\n**区域分析：**\n${answer}`
@@ -58,7 +61,7 @@ export function createPathologyTools(getImages: GetImages): Tool[] {
 
         return processImages(images, async (image, idx) => {
           const question = `请详细分析这张病理图像，重点关注${focus}方面的特征。`
-          const { answer } = await callPathoAPI(image.dataUrl, question, 'cot')
+          const { answer } = await callPathoAPI(baseUrl, image.dataUrl, question, 'cot')
           return `**图片 ${idx + 1} (${image.name})：**\n${answer}`
         }, '分析') + `\n\n**对比总结：** 以上是对 ${images.length} 张病理图像在「${focus}」方面的分别分析，请根据各项特征进行对比判断。`
       },
@@ -83,7 +86,7 @@ export function createPathologyTools(getImages: GetImages): Tool[] {
 5. **临床建议**：进一步检查或随访建议${clinical}`
 
         try {
-          const { answer } = await callPathoAPI(images[0].dataUrl, question, 'cot')
+          const { answer } = await callPathoAPI(baseUrl, images[0].dataUrl, question, 'cot')
           return `# 病理诊断报告\n\n${answer}`
         } catch (err) {
           return `病理报告生成失败 — ${err instanceof Error ? err.message : err}\n\n${PATHO_HINT}`

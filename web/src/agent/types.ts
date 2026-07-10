@@ -74,4 +74,27 @@ export interface AgentConfig {
   maxIterations?: number
   /** 是否展示思考过程 */
   showReasoning?: boolean
+  /** LLM API 配置（来自 localStorage 设置） */
+  apiConfig?: {
+    apiKey?: string
+    baseURL?: string
+    model?: string
+  }
+  /** 视觉 API 配置 */
+  visionConfig?: {
+    baseURL?: string
+    apiKey?: string
+    model?: string
+  }
+  /** 搜索配置 */
+  searchConfig?: {
+    provider?: string
+    apiKey?: string
+  }
+  /** 后端服务 URL 配置 */
+  backendUrls?: {
+    patho?: string
+    cellpose?: string
+    launcher?: string
+  }
 }

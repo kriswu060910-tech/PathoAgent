@@ -1,19 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { spawn, type ChildProcess } from 'child_process'
-import { resolve, join } from 'path'
+import { resolve } from 'path'
 import type { Plugin } from 'vite'
 
 const PROJECT_ROOT = resolve(__dirname, '..')
 const PYTHON = process.env.PYTHON_PATH || 'python'
-const LAUNCHER_SCRIPT = join(PROJECT_ROOT, 'launcher.py')
 
 function launcherPlugin(): Plugin {
   let proc: ChildProcess | null = null
   return {
     name: 'auto-launcher',
     configureServer(server) {
-      proc = spawn(PYTHON, ['-u', LAUNCHER_SCRIPT], {
+      proc = spawn(PYTHON, ['-u', '-m', 'launcher.main'], {
         stdio: 'inherit',
         cwd: PROJECT_ROOT,
       })

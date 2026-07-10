@@ -1,5 +1,32 @@
 import type { AgentRequest, AgentResponse, AgentService, AnnotationBox } from '../types/agent'
 import { ReactAgent } from '../agent'
+import type { AgentConfig } from '../agent'
+import type { AppSettings } from '../stores/settings'
+import { getSettings } from '../stores/settings'
+
+export function buildAgentConfig(settings: AppSettings): AgentConfig {
+  return {
+    apiConfig: {
+      apiKey: settings.apiKey || undefined,
+      baseURL: settings.baseURL || undefined,
+      model: settings.model || undefined,
+    },
+    visionConfig: {
+      baseURL: settings.visionBaseUrl || undefined,
+      apiKey: settings.visionApiKey || undefined,
+      model: settings.visionModel || undefined,
+    },
+    searchConfig: {
+      provider: settings.searchProvider || undefined,
+      apiKey: settings.searchApiKey || undefined,
+    },
+    backendUrls: {
+      patho: settings.pathoApiUrl || undefined,
+      cellpose: settings.cellposeApiUrl || undefined,
+      launcher: settings.launcherApiUrl || undefined,
+    },
+  }
+}
 
 /**
  * 使用 ReactAgent 替换原来的 MockAgentService。
@@ -15,12 +42,19 @@ import { ReactAgent } from '../agent'
  */
 export class AgentServiceImpl implements AgentService {
   private agents = new Map<string, ReactAgent>()
+  private configVersion = 0
 
   private getAgent(conversationId: string): ReactAgent {
     if (!this.agents.has(conversationId)) {
-      this.agents.set(conversationId, new ReactAgent())
+      this.agents.set(conversationId, new ReactAgent(buildAgentConfig(getSettings())))
     }
     return this.agents.get(conversationId)!
+  }
+
+  /** 设置变更时调用，清除所有缓存的 Agent 以便用新配置重建 */
+  resetAllAgents(): void {
+    this.agents.clear()
+    this.configVersion++
   }
 
   removeAgent(conversationId: string): void {
