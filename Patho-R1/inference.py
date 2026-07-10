@@ -8,8 +8,11 @@ from qwen_vl_utils import process_vision_info
 
 import config
 from image_utils import decode_base64_image, preprocess_image, temp_image_file
+from logger import setup_logger
 from model import ModelManager
 from schemas import AnalyzeResponse
+
+logger = setup_logger("patho", config.PROJECT_ROOT / "logs")
 
 
 def build_messages(
@@ -99,20 +102,27 @@ async def run_inference(
     """完整的单图推理入口：解码 → 预处理 → 生成 → 解析。
 
     使用 asyncio.to_thread 将同步推理放到线程池，避免阻塞事件循环。
+    通过 model_manager.inference_lock 保证同一时刻只有一个推理任务在运行，
+    降低 OOM 和输出错乱风险。
     """
-    try:
-        img = decode_base64_image(image_b64)
-        img = preprocess_image(img)
+    async with model_manager.inference_lock:
+        try:
+            img = decode_base64_image(image_b64)
+            img = preprocess_image(img)
 
-        with temp_image_file(img) as tmp_path:
-            messages = build_messages(tmp_path, question, style)
-            raw_output = await asyncio.to_thread(generate, model_manager, messages)
-            thinking, answer = parse_output(raw_output)
+            with temp_image_file(img) as tmp_path:
+                messages = build_messages(tmp_path, question, style)
+                raw_output = await asyncio.to_thread(generate, model_manager, messages)
+                thinking, answer = parse_output(raw_output)
 
-        return AnalyzeResponse(
-            thinking=thinking, answer=answer, raw=raw_output
-        )
-    except torch.cuda.OutOfMemoryError as exc:
-        raise HTTPException(status_code=500, detail=f"GPU 显存不足: {exc}") from exc
-    finally:
-        await asyncio.to_thread(model_manager.cleanup_gpu)
+            return AnalyzeResponse(
+                thinking=thinking, answer=answer, raw=raw_output
+            )
+        except torch.cuda.OutOfMemoryError as exc:
+            logger.error(f"GPU OOM: {exc}")
+            raise HTTPException(status_code=500, detail=f"GPU 显存不足: {exc}") from exc
+        except Exception as exc:
+            logger.exception("推理失败")
+            raise HTTPException(status_code=500, detail="推理失败，请检查日志") from exc
+        finally:
+            await asyncio.to_thread(model_manager.cleanup_gpu)

@@ -17,20 +17,24 @@ function getLauncherUrl(): string {
 }
 
 const DEFAULT_SERVICES: Services = {
-  patho: { label: 'Qwen2.5-VL 病理分析', running: true, healthy: true, port: 8001 },
-  cellpose: { label: 'Cellpose 细胞分割', running: true, healthy: true, port: 8002 },
+  patho: { label: 'Qwen2.5-VL 病理分析', running: false, healthy: false, port: 8001 },
+  cellpose: { label: 'Cellpose 细胞分割', running: false, healthy: false, port: 8002 },
 }
 
 export function useServices() {
   const [services, setServices] = useState<Services>(DEFAULT_SERVICES)
   const [loading, setLoading] = useState('')
+  const [connected, setConnected] = useState(false)
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${getLauncherUrl()}/status`)
-      if (res.ok) setServices(await res.json())
+      const res = await fetch(`${getLauncherUrl()}/status`, { signal: AbortSignal.timeout(3000) })
+      if (res.ok) {
+        setServices(await res.json())
+        setConnected(true)
+      }
     } catch {
-      // launcher 未启动时静默忽略
+      setConnected(false)
     }
   }, [])
 
@@ -79,5 +83,5 @@ export function useServices() {
     return '无法获取日志'
   }, [])
 
-  return { services, loading, toggle, refresh: fetchStatus, fetchLogs }
+  return { services, loading, connected, toggle, refresh: fetchStatus, fetchLogs }
 }

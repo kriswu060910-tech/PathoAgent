@@ -18,14 +18,20 @@ API 端点：
 """
 
 import argparse
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import config
+from image_utils import ImageTooLargeError
 from inference import run_inference
+from logger import setup_logger
 from model import ModelManager
 from schemas import AnalyzeRequest, AnalyzeResponse, RegionRequest, ReportRequest
+
+logger = setup_logger("patho", config.PROJECT_ROOT / "logs")
 
 # ---------------------------------------------------------------------------
 #  模型管理（全局单一实例）
@@ -45,6 +51,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(ImageTooLargeError)
+async def image_too_large_handler(_request: Request, exc: ImageTooLargeError):
+    logger.warning(f"图片过大: {exc.size / 1024 / 1024:.1f}MB")
+    return JSONResponse(
+        status_code=413,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(_request: Request, exc: ValueError):
+    logger.warning(f"请求参数错误: {exc}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(_request: Request, exc: Exception):
+    logger.exception("未处理异常")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "服务器内部错误，请查看日志"},
+    )
 
 
 @app.get("/health")
@@ -116,6 +149,12 @@ if __name__ == "__main__":
         "--host", default=config.DEFAULT_HOST, help="绑定地址"
     )
     args = parser.parse_args()
+
+    model_name = config.MODEL_MAP.get(args.model, config.MODEL_MAP["7b"])
+    logger.info(f"Patho-R1 服务启动: host={args.host}, port={args.port}, model={args.model}")
+
+    if not Path(model_name).exists() and "/" not in model_name and "\\" not in model_name:
+        logger.warning(f"模型路径/ID 看起来无效: {model_name}")
 
     model_manager.load(args.model)
 

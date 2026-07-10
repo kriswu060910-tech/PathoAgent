@@ -47,15 +47,23 @@ function loadSettings(): AppSettings {
 
 let currentSettings = loadSettings()
 const listeners = new Set<() => void>()
+const changeListeners = new Set<(settings: AppSettings) => void>()
 
 function notify() {
   listeners.forEach((fn) => fn())
+  changeListeners.forEach((fn) => fn(currentSettings))
 }
 
 function saveSettings(s: AppSettings) {
   currentSettings = s
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
   notify()
+}
+
+/** 注册设置变更回调（返回取消订阅函数） */
+export function onSettingsChange(cb: (settings: AppSettings) => void) {
+  changeListeners.add(cb)
+  return () => changeListeners.delete(cb)
 }
 
 /** 在 React 外部读取当前设置（工具/服务层使用） */

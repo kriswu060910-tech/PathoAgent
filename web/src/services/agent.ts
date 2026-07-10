@@ -2,7 +2,7 @@ import type { AgentRequest, AgentResponse, AgentService, AnnotationBox } from '.
 import { ReactAgent } from '../agent'
 import type { AgentConfig } from '../agent'
 import type { AppSettings } from '../stores/settings'
-import { getSettings } from '../stores/settings'
+import { getSettings, onSettingsChange } from '../stores/settings'
 
 export function buildAgentConfig(settings: AppSettings): AgentConfig {
   return {
@@ -42,19 +42,24 @@ export function buildAgentConfig(settings: AppSettings): AgentConfig {
  */
 export class AgentServiceImpl implements AgentService {
   private agents = new Map<string, ReactAgent>()
-  private configVersion = 0
+  private settingsSnapshot = getSettings()
 
   private getAgent(conversationId: string): ReactAgent {
     if (!this.agents.has(conversationId)) {
-      this.agents.set(conversationId, new ReactAgent(buildAgentConfig(getSettings())))
+      this.agents.set(conversationId, new ReactAgent(buildAgentConfig(this.settingsSnapshot)))
     }
     return this.agents.get(conversationId)!
   }
 
   /** 设置变更时调用，清除所有缓存的 Agent 以便用新配置重建 */
-  resetAllAgents(): void {
+  reconfigure(settings: AppSettings): void {
+    this.settingsSnapshot = settings
     this.agents.clear()
-    this.configVersion++
+  }
+
+  /** @deprecated 使用 reconfigure(settings) */
+  resetAllAgents(): void {
+    this.reconfigure(getSettings())
   }
 
   removeAgent(conversationId: string): void {
@@ -105,3 +110,10 @@ export class AgentServiceImpl implements AgentService {
 }
 
 export const agentService: AgentService = new AgentServiceImpl()
+
+// 设置变更时自动重置所有缓存的 Agent
+onSettingsChange((settings) => {
+  if (agentService instanceof AgentServiceImpl) {
+    agentService.reconfigure(settings)
+  }
+})

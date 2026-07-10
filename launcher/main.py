@@ -12,15 +12,20 @@ API 端点：
 """
 
 import argparse
+import signal
+import sys
 import threading
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
+from .logger import setup_logger
 from .service_manager import ServiceManager
 
 manager = ServiceManager()
+logger = setup_logger("launcher", config.LOG_DIR)
 
 app = FastAPI(title="Agent Launcher", version="1.0.0")
 app.add_middleware(
@@ -75,6 +80,25 @@ if __name__ == "__main__":
             kwargs={"delay_seconds": 1.0},
             daemon=True,
         ).start()
+
+    if not Path(config.PYTHON).exists():
+        logger.error(f"配置的 Python 解释器不存在: {config.PYTHON}")
+        logger.error("请检查 PYTHON_PATH 环境变量或 launcher/config.py 配置")
+        sys.exit(1)
+
+    logger.info(
+        f"Launcher 启动: host={config.DEFAULT_HOST}, port={config.DEFAULT_PORT}, "
+        f"auto_start={args.auto_start}"
+    )
+
+    def _signal_handler(signum, _frame):
+        sig_name = signal.Signals(signum).name
+        logger.info(f"收到信号 {sig_name}，正在优雅关闭...")
+        manager.shutdown()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
 
     import uvicorn
 

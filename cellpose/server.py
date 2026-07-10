@@ -29,8 +29,9 @@ os.environ.setdefault(
 )
 
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from analysis import (
@@ -42,12 +43,16 @@ from analysis import (
     run_segmentation,
 )
 from image_utils import encode_image
+from logger import setup_logger
+
+logger = setup_logger("cellpose", config.PROJECT_ROOT / "logs")
 
 # ---------------------------------------------------------------------------
 #  模型加载
 # ---------------------------------------------------------------------------
 
 model = None
+_model_lock = asyncio.Lock()
 
 
 def load_model(model_type: str):
@@ -55,9 +60,9 @@ def load_model(model_type: str):
     from cellpose.models import CellposeModel
 
     gpu = torch.cuda.is_available()
-    print(f"[Cellpose] Loading model: {model_type} (GPU={gpu}) ...")
+    logger.info(f"Loading model: {model_type} (GPU={gpu}) ...")
     model = CellposeModel(gpu=gpu, pretrained_model=model_type)
-    print("[Cellpose] Model loaded successfully")
+    logger.info("Model loaded successfully")
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +77,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(_request: Request, exc: ValueError):
+    logger.warning(f"请求参数错误: {exc}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(_request: Request, exc: Exception):
+    logger.exception("未处理异常")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "服务器内部错误，请查看日志"},
+    )
 
 
 class SegmentRequest(BaseModel):
@@ -131,15 +154,16 @@ async def segment(req: SegmentRequest):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     try:
-        img, mask = await asyncio.to_thread(
-            run_segmentation,
-            model,
-            req.image,
-            req.diameter,
-            req.channels,
-            req.flow_threshold,
-            req.cellprob_threshold,
-        )
+        async with _model_lock:
+            img, mask = await asyncio.to_thread(
+                run_segmentation,
+                model,
+                req.image,
+                req.diameter,
+                req.channels,
+                req.flow_threshold,
+                req.cellprob_threshold,
+            )
         cells = compute_cell_info(mask)
         return SegmentResponse(
             cell_count=len(cells),
@@ -149,8 +173,9 @@ async def segment(req: SegmentRequest):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.exception("细胞分割失败")
+        raise HTTPException(status_code=500, detail="细胞分割失败，请检查日志") from exc
 
 
 @app.post("/measure", response_model=MeasureResponse)
@@ -158,15 +183,16 @@ async def measure(req: MeasureRequest):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     try:
-        img, mask = await asyncio.to_thread(
-            run_segmentation,
-            model,
-            req.image,
-            req.diameter,
-            req.channels,
-            req.flow_threshold,
-            req.cellprob_threshold,
-        )
+        async with _model_lock:
+            img, mask = await asyncio.to_thread(
+                run_segmentation,
+                model,
+                req.image,
+                req.diameter,
+                req.channels,
+                req.flow_threshold,
+                req.cellprob_threshold,
+            )
         cells = compute_measurements(mask, req.pixel_size)
         return MeasureResponse(
             cell_count=len(cells),
@@ -176,8 +202,9 @@ async def measure(req: MeasureRequest):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.exception("形态学测量失败")
+        raise HTTPException(status_code=500, detail="形态学测量失败，请检查日志") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +226,8 @@ if __name__ == "__main__":
         "--host", default=config.DEFAULT_HOST, help="绑定地址"
     )
     args = parser.parse_args()
+
+    logger.info(f"Cellpose 服务启动: host={args.host}, port={args.port}, model={args.model}")
 
     load_model(args.model)
 

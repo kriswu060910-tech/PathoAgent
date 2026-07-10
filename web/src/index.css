@@ -802,6 +802,36 @@ body {
   gap: 4px;
 }
 
+.service-disconnected-hint {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 8px 12px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 8px;
+}
+
+.service-warning-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.service-warning-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.service-warning-desc {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-sub);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {

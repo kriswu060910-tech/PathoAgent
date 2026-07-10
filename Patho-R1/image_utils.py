@@ -1,6 +1,7 @@
 """病理图像预处理与编解码工具。"""
 
 import base64
+import binascii
 import io
 import os
 import tempfile
@@ -11,9 +12,24 @@ from typing import Generator
 from PIL import Image
 
 import config
+from logger import setup_logger
+
+logger = setup_logger("patho", config.PROJECT_ROOT / "logs")
 
 # base64 最大解码大小：20MB（防止恶意请求导致 OOM）
 MAX_IMAGE_BASE64_SIZE = 20 * 1024 * 1024
+
+
+class ImageTooLargeError(ValueError):
+    """图片 base64 数据超过允许的最大大小。"""
+
+    def __init__(self, size: int, limit: int) -> None:
+        self.size = size
+        self.limit = limit
+        super().__init__(
+            f"图片数据过大 ({size / 1024 / 1024:.1f}MB)，"
+            f"上限 {limit / 1024 / 1024:.0f}MB"
+        )
 
 
 def decode_base64_image(image_b64: str) -> Image.Image:
@@ -23,10 +39,17 @@ def decode_base64_image(image_b64: str) -> Image.Image:
         image_data = image_data.split(",", 1)[1]
 
     if len(image_data) > MAX_IMAGE_BASE64_SIZE:
-        raise ValueError(f"图片数据过大 ({len(image_data) / 1024 / 1024:.1f}MB)，上限 {MAX_IMAGE_BASE64_SIZE / 1024 / 1024:.0f}MB")
+        raise ImageTooLargeError(len(image_data), MAX_IMAGE_BASE64_SIZE)
 
-    img_bytes = base64.b64decode(image_data)
-    return Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    try:
+        img_bytes = base64.b64decode(image_data, validate=True)
+    except binascii.Error as exc:
+        raise ValueError(f"图片 base64 数据无效: {exc}") from exc
+
+    try:
+        return Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    except Exception as exc:
+        raise ValueError(f"无法解析图片文件: {exc}") from exc
 
 
 def preprocess_image(img: Image.Image, max_dim: int | None = None) -> Image.Image:
@@ -37,7 +60,7 @@ def preprocess_image(img: Image.Image, max_dim: int | None = None) -> Image.Imag
         return img
     scale = max_dim / max(w, h)
     new_w, new_h = int(w * scale), int(h * scale)
-    print(f"[Patho-R1] Resizing image {w}x{h} -> {new_w}x{new_h}")
+    logger.info(f"Resizing image {w}x{h} -> {new_w}x{new_h}")
     return img.resize((new_w, new_h), Image.LANCZOS)
 
 

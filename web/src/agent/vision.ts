@@ -194,12 +194,22 @@ export async function analyzeImages(images: ImageAttachment[], prompt?: string, 
     return '（用户附带了图片，但视觉服务未配置）'
   }
 
-  const descriptions = await Promise.all(
+  const results = await Promise.allSettled(
     images.map(async (img, i) => {
       const desc = await analyzeImage(img, prompt, cfg)
       return images.length === 1 ? `[图片内容] ${desc}` : `[图片${i + 1}: ${img.name}] ${desc}`
     }),
   )
+
+  const descriptions: string[] = []
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
+      descriptions.push(result.value)
+    } else {
+      const label = images.length === 1 ? '图片' : `图片${i + 1}: ${images[i].name}`
+      descriptions.push(`[${label}] 分析失败：${result.reason instanceof Error ? result.reason.message : String(result.reason)}`)
+    }
+  })
 
   return descriptions.join('\n\n')
 }
