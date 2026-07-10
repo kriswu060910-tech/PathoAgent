@@ -1,4 +1,5 @@
 import './SplashScreen.css'
+import sealIcon from '../assets/seal.png'
 
 const TITLE = 'Cookie'
 
@@ -6,7 +7,7 @@ export function SplashScreen() {
   return (
     <div className="splash">
       <div className="splash-avatar-wrap">
-        <img src="/avatar.jpg" alt="Cookie" />
+        <img src={sealIcon} alt="Cookie" />
       </div>
       <div className="splash-title">
         {TITLE.split('').map((char, i) => (

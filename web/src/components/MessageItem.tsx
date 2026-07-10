@@ -1,6 +1,8 @@
 import type { Message } from '../types/agent'
 import { formatTime } from '../utils'
 import { BoundingBoxOverlay } from './BoundingBoxOverlay'
+import sealIcon from '../assets/seal.png'
+import ReactMarkdown from 'react-markdown'
 
 interface MessageItemProps {
   message: Message
@@ -17,7 +19,7 @@ export function MessageItem({ message }: MessageItemProps) {
           '你'
         ) : (
           <img
-            src="/avatar.jpg"
+            src={sealIcon}
             alt="Cookie 头像"
             width="32"
             height="32"
@@ -28,13 +30,13 @@ export function MessageItem({ message }: MessageItemProps) {
         {message.images && message.images.length > 0 && (
           <div className="message-images">
             {message.images.map((img, i) => (
-              <div key={i} className={`image-wrapper ${hasAnnotations ? 'annotated' : ''}`}>
+              <div key={i} className={`image-wrapper ${hasAnnotations && i === 0 ? 'annotated' : ''}`}>
                 <img
                   src={img.dataUrl}
                   alt={img.name}
                   className="message-image"
                 />
-                {hasAnnotations && message.annotations && (
+                {hasAnnotations && i === 0 && message.annotations && (
                   <BoundingBoxOverlay boxes={message.annotations} />
                 )}
               </div>
@@ -42,7 +44,11 @@ export function MessageItem({ message }: MessageItemProps) {
           </div>
         )}
         <div className="message-content">
-          {message.content}
+          {isUser ? (
+            message.content
+          ) : (
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          )}
           {message.status === 'streaming' && <span className="cursor" />}
         </div>
         <div className="message-meta">
@@ -55,4 +61,3 @@ export function MessageItem({ message }: MessageItemProps) {
     </div>
   )
 }
-

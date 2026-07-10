@@ -156,16 +156,3 @@
     opacity: 1;
   }
 }
-
-/* Main app fade-in after splash */
-.app-content {
-  opacity: 0;
-  animation: app-fade-in 0.5s ease forwards;
-  animation-delay: 2.6s;
-}
-
-@keyframes app-fade-in {
-  to {
-    opacity: 1;
-  }
-}

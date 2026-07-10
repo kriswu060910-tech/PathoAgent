@@ -4,6 +4,7 @@
 """
 
 import atexit
+import asyncio
 import subprocess
 import sys
 import time
@@ -152,7 +153,7 @@ class ServiceManager:
     #  控制
     # ------------------------------------------------------------------
 
-    def start(self, name: str, wait: bool = True, timeout_seconds: int = 120) -> dict:
+    async def start(self, name: str, wait: bool = True, timeout_seconds: int = 120) -> dict:
         """启动指定服务；若已运行则直接返回成功。"""
         svc = self.get(name)
         handle = self._processes.get(name)
@@ -195,7 +196,7 @@ class ServiceManager:
                         "请查看日志"
                     )
                 }
-            time.sleep(1)
+            await asyncio.sleep(1)
 
         return {"message": f"{svc.label} 正在启动中，模型加载可能需要更长时间"}
 
@@ -230,7 +231,7 @@ class ServiceManager:
         for name, svc in self._services.items():
             if self._is_port_open(svc.port):
                 continue
-            self.start(name, wait=False)
+            asyncio.run(self.start(name, wait=False))
             logger.info(f"正在启动 {svc.label} ...")
 
     def shutdown(self) -> None:

@@ -21,25 +21,53 @@ export interface AppSettings {
 
 const STORAGE_KEY = 'cookie-agent-settings'
 
-export const DEFAULT_SETTINGS: AppSettings = {
+const isDev = import.meta.env.DEV === true
+
+// 生产模式下后端服务需运行在本地，通过 Tauri 或反向代理访问
+export const DEFAULT_SETTINGS: Readonly<AppSettings> = Object.freeze({
   apiKey: '',
   baseURL: 'https://api.deepseek.com',
   model: 'deepseek-chat',
-  visionBaseUrl: '',
+  visionBaseUrl: '/api/vision',
   visionApiKey: '',
   visionModel: 'gpt-4o',
   searchProvider: 'duckduckgo',
   searchApiKey: '',
-  pathoApiUrl: 'http://localhost:8001',
-  cellposeApiUrl: 'http://localhost:8002',
-  launcherApiUrl: 'http://localhost:8099',
-}
+  pathoApiUrl: isDev ? '/api/patho' : 'http://localhost:8001',
+  cellposeApiUrl: isDev ? '/api/cellpose' : 'http://localhost:8002',
+  launcherApiUrl: isDev ? '/api/launcher' : 'http://localhost:8099',
+})
 
 function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
+      const parsed = JSON.parse(raw)
+      const merged = { ...DEFAULT_SETTINGS, ...parsed }
+      let migrated = false
+
+      // 迁移：旧的 DashScope 直连地址改为 Vite 代理路径
+      if (merged.visionBaseUrl?.includes('dashscope.aliyuncs.com')) {
+        merged.visionBaseUrl = '/api/vision'
+        migrated = true
+      }
+      // 迁移：dev 模式下旧的 localhost 直连地址改为代理路径
+      if (isDev) {
+        if (merged.pathoApiUrl === 'http://localhost:8001') { merged.pathoApiUrl = '/api/patho'; migrated = true }
+        if (merged.cellposeApiUrl === 'http://localhost:8002') { merged.cellposeApiUrl = '/api/cellpose'; migrated = true }
+        if (merged.launcherApiUrl === 'http://localhost:8099') { merged.launcherApiUrl = '/api/launcher'; migrated = true }
+      } else {
+        // 生产模式下代理路径还原为直连地址
+        if (merged.pathoApiUrl === '/api/patho') { merged.pathoApiUrl = 'http://localhost:8001'; migrated = true }
+        if (merged.cellposeApiUrl === '/api/cellpose') { merged.cellposeApiUrl = 'http://localhost:8002'; migrated = true }
+        if (merged.launcherApiUrl === '/api/launcher') { merged.launcherApiUrl = 'http://localhost:8099'; migrated = true }
+      }
+
+      // 迁移后写回 localStorage，避免每次加载重复迁移
+      if (migrated) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+      }
+      return merged
     }
   } catch { /* ignore */ }
   return { ...DEFAULT_SETTINGS }
@@ -54,9 +82,17 @@ function notify() {
   changeListeners.forEach((fn) => fn(currentSettings))
 }
 
+const persistCallbacks = new Set<(s: AppSettings) => void>()
+
+export function onSettingsPersist(cb: (s: AppSettings) => void) {
+  persistCallbacks.add(cb)
+  return () => persistCallbacks.delete(cb)
+}
+
 function saveSettings(s: AppSettings) {
   currentSettings = s
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+  persistCallbacks.forEach((cb) => cb(s))
   notify()
 }
 

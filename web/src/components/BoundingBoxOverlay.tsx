@@ -39,7 +39,7 @@ export function BoundingBoxOverlay({ boxes }: BoundingBoxOverlayProps) {
       preserveAspectRatio="none"
     >
       {boxes.map((box, i) => {
-        const color = COLORS[i % COLORS.length]
+        const color = box.color || COLORS[i % COLORS.length]
         const hasPolygon = box.points && box.points.length >= 3
         const pos = labelPosition(box)
         const labelH = 0.045

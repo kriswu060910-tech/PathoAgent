@@ -1,5 +1,7 @@
 import type { Conversation } from '../types/agent'
 import { formatTime } from '../utils'
+import { useAuth } from '../hooks/useAuth'
+import { logout } from '../stores/auth'
 import sealIcon from '../assets/seal.png'
 
 interface SidebarProps {
@@ -19,6 +21,7 @@ export function Sidebar({
   onDelete,
   onOpenSettings,
 }: SidebarProps) {
+  const { user } = useAuth()
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -33,13 +36,15 @@ export function Sidebar({
 
       <nav className="conversation-list">
         {conversations.map((conversation) => (
-          <button
+          <div
             key={conversation.id}
-            type="button"
+            role="button"
+            tabIndex={0}
             className={`conversation-item ${
               conversation.id === activeId ? 'active' : ''
             }`}
             onClick={() => onSelect(conversation.id)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onSelect(conversation.id) }}
           >
             <span className="conversation-title">{conversation.title}</span>
             <span className="conversation-meta">
@@ -56,11 +61,18 @@ export function Sidebar({
             >
               ×
             </button>
-          </button>
+          </div>
         ))}
       </nav>
 
       <div className="sidebar-footer">
+        <div className="sidebar-user-info">
+          <span className="sidebar-user-avatar">{user?.displayName?.[0]?.toUpperCase() || '?'}</span>
+          <span className="sidebar-user-name">{user?.displayName || user?.username}</span>
+          <button type="button" className="sidebar-logout-btn" onClick={() => logout()} title="退出登录">
+            ⎋
+          </button>
+        </div>
         <button type="button" className="settings-trigger-btn" onClick={onOpenSettings}>
           ⚙ 设置
         </button>

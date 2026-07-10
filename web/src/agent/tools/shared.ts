@@ -7,6 +7,20 @@ export const NO_IMAGE_MSG = '当前没有上传图片，请先上传图片再使
 export const PATHO_HINT = '请确保病理分析后端已启动：`python server.py`'
 export const CELLPOSE_HINT = '请确保 Cellpose 后端已启动：`cd cellpose && python server.py`'
 
+/** 清洗 HTTP header 值，仅保留 RFC 7230 允许的可见 ASCII + 空格/制表符 */
+export function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[^\t\x20-\x7E]/g, '')
+}
+
+/** 清洗整个 headers 对象 */
+export function sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
+  const cleaned: Record<string, string> = {}
+  for (const [k, v] of Object.entries(headers)) {
+    cleaned[k] = sanitizeHeaderValue(v)
+  }
+  return cleaned
+}
+
 /** POST JSON 请求，统一处理错误响应。默认 30 秒超时。 */
 export async function apiPost<T>(
   url: string,
@@ -19,7 +33,7 @@ export async function apiPost<T>(
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...extraHeaders },
+      headers: sanitizeHeaders({ 'Content-Type': 'application/json', ...extraHeaders }),
       body: JSON.stringify(body),
       signal: controller.signal,
     })
@@ -83,4 +97,11 @@ export async function processImages(
 /** 生成多图结果前缀 */
 export function imagePrefix(total: number, idx: number, name: string): string {
   return total > 1 ? `**图片 ${idx + 1} (${name})**\n` : ''
+}
+
+/** 解析后端服务 URL：优先使用 settings 中的值，其次环境变量，最后 fallback 代理路径 */
+export function resolveBackendUrl(settingsValue: string | undefined, envKey: string, fallbackProxy: string): string {
+  if (settingsValue) return settingsValue
+  const envVal = (import.meta as ImportMeta).env?.[envKey] as string | undefined
+  return envVal || fallbackProxy
 }

@@ -12,10 +12,6 @@ jobs:
   build:
     runs-on: windows-latest
 
-    defaults:
-      run:
-        working-directory: web
-
     steps:
       - uses: actions/checkout@v4
 
@@ -37,13 +33,25 @@ jobs:
           workspaces: web/src-tauri
 
       - name: Install frontend dependencies
+        working-directory: web
         run: npm ci
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2"
+      - name: Sync version from git tag
+        shell: bash
+        run: |
+          TAG=${GITHUB_REF_NAME#v}
+          # Update tauri.conf.json version
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$TAG\"/" web/src-tauri/tauri.conf.json
+          # Update package.json version
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$TAG\"/" web/package.json
 
       - name: Build Tauri app
-        run: cargo tauri build
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: web
+          args: --verbose
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

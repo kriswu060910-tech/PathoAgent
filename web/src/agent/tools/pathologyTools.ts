@@ -1,9 +1,10 @@
 import type { Tool } from '../types'
-import { apiPost, processImages, imagePrefix, PATHO_HINT } from './shared'
+import { apiPost, processImages, imagePrefix, PATHO_HINT, resolveBackendUrl } from './shared'
 import type { GetImages } from './shared'
+import { getSettings } from '../../stores/settings'
 
 function getApiUrl(envUrl?: string): string {
-  return envUrl || import.meta.env.VITE_PATHO_API_URL || '/api/patho'
+  return resolveBackendUrl(envUrl ?? getSettings().pathoApiUrl, 'VITE_PATHO_API_URL', '/api/patho')
 }
 
 async function callPathoAPI(baseUrl: string, image: string, question: string, style: string): Promise<{

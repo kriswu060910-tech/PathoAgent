@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useSettings, type AppSettings } from '../hooks/useSettings'
-import { agentService } from '../services/agent'
-import type { AgentServiceImpl } from '../services/agent'
+import { sanitizeHeaders } from '../agent/tools/shared'
 
 interface SettingsPanelProps {
   open: boolean
@@ -28,7 +27,7 @@ async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
       const baseURL = (s.baseURL || 'https://api.deepseek.com').replace(/\/$/, '')
       const res = await fetch(`${baseURL}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${s.apiKey}` },
+        headers: sanitizeHeaders({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${s.apiKey}` }),
         body: JSON.stringify({ model: s.model || 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
         signal: controller.signal,
       })
@@ -58,7 +57,7 @@ async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
     try {
       const baseURL = s.visionBaseUrl.replace(/\/$/, '')
       const res = await fetch(`${baseURL}/models`, {
-        headers: { 'Authorization': `Bearer ${s.visionApiKey}` },
+        headers: sanitizeHeaders({ 'Authorization': `Bearer ${s.visionApiKey}` }),
         signal: controller.signal,
       })
       if (res.ok) {
@@ -115,8 +114,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     try {
       const validationResults = await validateSettings(settings)
       setResults(validationResults)
-      // 无论验证结果如何，都重建 Agent（用户可能知道某些服务未启动）
-      ;(agentService as AgentServiceImpl).resetAllAgents()
     } catch {
       setResults([{ name: '验证', ok: false, message: '验证过程出错' }])
     } finally {
@@ -127,7 +124,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const handleReset = () => {
     reset()
     setResults(null)
-    ;(agentService as AgentServiceImpl).resetAllAgents()
   }
 
   const field = (
@@ -197,7 +193,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 <p className="settings-section-desc">
                   配置视觉 API 以启用 OCR 文字识别和物体标注功能。支持 OpenAI 兼容的多模态接口。
                 </p>
-                {field('API Base URL', 'visionBaseUrl', 'https://dashscope.aliyuncs.com/compatible-mode/v1')}
+                {field('API Base URL', 'visionBaseUrl', '/api/vision（开发环境默认代理）')}
                 {field('API Key', 'visionApiKey', 'sk-...', 'password')}
                 {field('模型名称', 'visionModel', 'qwen-vl-max')}
               </div>
@@ -227,11 +223,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             {activeSection === 'backend' && (
               <div className="settings-section">
                 <p className="settings-section-desc">
-                  配置本地后端服务地址。病理分析和细胞分割工具需要对应的后端服务运行才能使用。
+                  配置本地后端服务地址。病理分析和细胞分割工具需要对应的后端服务运行才能使用。开发环境默认使用 Vite 代理路径。
                 </p>
-                {field('病理分析后端', 'pathoApiUrl', 'http://localhost:8001')}
-                {field('Cellpose 后端', 'cellposeApiUrl', 'http://localhost:8002')}
-                {field('Launcher 管理器', 'launcherApiUrl', 'http://localhost:8099')}
+                {field('病理分析后端', 'pathoApiUrl', '/api/patho')}
+                {field('Cellpose 后端', 'cellposeApiUrl', '/api/cellpose')}
+                {field('Launcher 管理器', 'launcherApiUrl', '/api/launcher')}
               </div>
             )}
           </div>

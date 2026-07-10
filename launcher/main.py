@@ -17,7 +17,7 @@ import sys
 import threading
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
@@ -30,7 +30,11 @@ logger = setup_logger("launcher", config.LOG_DIR)
 app = FastAPI(title="Agent Launcher", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:4173",   # Vite preview
+        "tauri://localhost",       # Tauri 生产环境
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -42,7 +46,7 @@ async def status():
 
 
 @app.get("/logs/{name}")
-async def logs(name: str, lines: int = 50):
+async def logs(name: str, lines: int = Query(default=50, ge=1, le=500)):
     try:
         return manager.read_logs(name, lines)
     except KeyError as exc:
@@ -52,7 +56,7 @@ async def logs(name: str, lines: int = 50):
 @app.post("/start/{name}")
 async def start(name: str):
     try:
-        return manager.start(name, timeout_seconds=config.STARTUP_TIMEOUT_SECONDS)
+        return await manager.start(name, timeout_seconds=config.STARTUP_TIMEOUT_SECONDS)
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
 

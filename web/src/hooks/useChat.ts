@@ -131,10 +131,9 @@ export function useChat() {
       setIsLoading(true)
 
       try {
-        // 不依赖闭包中的 conversations，Agent 内部 memory 已维护完整上下文
+        // Agent 内部 memory 已维护完整上下文，无需传递历史消息
         const request = {
           conversationId: activeId,
-          messages: [],
           content: trimmed,
           enableSearch,
           images,

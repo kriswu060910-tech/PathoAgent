@@ -1,9 +1,10 @@
 import type { Tool } from '../types'
-import { apiPost, processImages, imagePrefix, parseOptionalFloat } from './shared'
+import { apiPost, processImages, imagePrefix, parseOptionalFloat, resolveBackendUrl } from './shared'
 import type { GetImages } from './shared'
+import { getSettings } from '../../stores/settings'
 
 function getApiUrl(envUrl?: string): string {
-  return envUrl || import.meta.env.VITE_CELLPOSE_API_URL || '/api/cellpose'
+  return resolveBackendUrl(envUrl ?? getSettings().cellposeApiUrl, 'VITE_CELLPOSE_API_URL', '/api/cellpose')
 }
 
 interface CellInfo {

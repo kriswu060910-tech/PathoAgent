@@ -38,7 +38,6 @@ export interface Conversation {
 
 export interface AgentRequest {
   conversationId: string
-  messages: Message[]
   content: string
   /** 是否启用联网搜索工具 */
   enableSearch?: boolean

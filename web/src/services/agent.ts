@@ -57,11 +57,6 @@ export class AgentServiceImpl implements AgentService {
     this.agents.clear()
   }
 
-  /** @deprecated 使用 reconfigure(settings) */
-  resetAllAgents(): void {
-    this.reconfigure(getSettings())
-  }
-
   removeAgent(conversationId: string): void {
     this.agents.delete(conversationId)
   }
