@@ -10,21 +10,107 @@ interface SettingsPanelProps {
 
 type Section = 'llm' | 'vision' | 'search' | 'backend'
 
+interface ValidationResult {
+  name: string
+  ok: boolean
+  message: string
+}
+
+async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
+  const results: ValidationResult[] = []
+
+  // 验证 LLM API
+  if (s.apiKey) {
+    try {
+      const baseURL = (s.baseURL || 'https://api.deepseek.com').replace(/\/$/, '')
+      const res = await fetch(`${baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${s.apiKey}` },
+        body: JSON.stringify({ model: s.model || 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      })
+      if (res.ok || res.status === 200) {
+        results.push({ name: 'LLM API', ok: true, message: '连接成功' })
+      } else if (res.status === 401 || res.status === 403) {
+        results.push({ name: 'LLM API', ok: false, message: 'API Key 无效或已过期' })
+      } else {
+        results.push({ name: 'LLM API', ok: false, message: `请求失败 (${res.status})` })
+      }
+    } catch (err) {
+      results.push({ name: 'LLM API', ok: false, message: `无法连接: ${err instanceof Error ? err.message : '网络错误'}` })
+    }
+  } else {
+    results.push({ name: 'LLM API', ok: false, message: '未配置 API Key，Agent 将降级为简单聊天' })
+  }
+
+  // 验证视觉 API（仅当配置了时才验证）
+  if (s.visionBaseUrl && s.visionApiKey) {
+    try {
+      const baseURL = s.visionBaseUrl.replace(/\/$/, '')
+      const res = await fetch(`${baseURL}/models`, {
+        headers: { 'Authorization': `Bearer ${s.visionApiKey}` },
+      })
+      if (res.ok) {
+        results.push({ name: '视觉 API', ok: true, message: '连接成功' })
+      } else if (res.status === 401 || res.status === 403) {
+        results.push({ name: '视觉 API', ok: false, message: 'API Key 无效' })
+      } else {
+        // 有些 API 不支持 /models 端点，但能连上就算成功
+        results.push({ name: '视觉 API', ok: true, message: `已连接 (HTTP ${res.status})` })
+      }
+    } catch (err) {
+      results.push({ name: '视觉 API', ok: false, message: `无法连接: ${err instanceof Error ? err.message : '网络错误'}` })
+    }
+  }
+
+  // 验证后端服务
+  const backends = [
+    { url: s.pathoApiUrl, name: '病理分析' },
+    { url: s.cellposeApiUrl, name: 'Cellpose' },
+  ]
+  for (const backend of backends) {
+    if (backend.url) {
+      try {
+        const res = await fetch(`${backend.url}/health`, { signal: AbortSignal.timeout(5000) })
+        if (res.ok) {
+          results.push({ name: backend.name, ok: true, message: '运行中' })
+        } else {
+          results.push({ name: backend.name, ok: false, message: `响应异常 (${res.status})` })
+        }
+      } catch {
+        results.push({ name: backend.name, ok: false, message: '未运行或无法访问' })
+      }
+    }
+  }
+
+  return results
+}
+
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const { settings, update, reset } = useSettings()
   const [activeSection, setActiveSection] = useState<Section>('llm')
-  const [saved, setSaved] = useState(false)
+  const [validating, setValidating] = useState(false)
+  const [results, setResults] = useState<ValidationResult[] | null>(null)
 
   if (!open) return null
 
-  const handleSave = () => {
-    (agentService as AgentServiceImpl).resetAllAgents()
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  const handleSave = async () => {
+    setValidating(true)
+    setResults(null)
+    try {
+      const validationResults = await validateSettings(settings)
+      setResults(validationResults)
+      // 无论验证结果如何，都重建 Agent（用户可能知道某些服务未启动）
+      ;(agentService as AgentServiceImpl).resetAllAgents()
+    } catch {
+      setResults([{ name: '验证', ok: false, message: '验证过程出错' }])
+    } finally {
+      setValidating(false)
+    }
   }
 
   const handleReset = () => {
     reset()
+    setResults(null)
     ;(agentService as AgentServiceImpl).resetAllAgents()
   }
 
@@ -53,6 +139,9 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     { key: 'search', label: '联网搜索' },
     { key: 'backend', label: '后端服务' },
   ]
+
+  const successCount = results?.filter((r) => r.ok).length ?? 0
+  const totalCount = results?.length ?? 0
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -135,8 +224,21 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         <div className="settings-footer">
           <button className="settings-btn reset" onClick={handleReset}>恢复默认</button>
           <div className="settings-footer-right">
-            {saved && <span className="settings-saved">已保存，Agent 将使用新配置</span>}
-            <button className="settings-btn primary" onClick={handleSave}>保存并重建 Agent</button>
+            {results && (
+              <div className="settings-validation-results">
+                <span className={`settings-validation-summary ${successCount === totalCount ? 'success' : 'warning'}`}>
+                  {successCount}/{totalCount} 通过
+                </span>
+                {results.map((r, i) => (
+                  <span key={i} className={`settings-validation-item ${r.ok ? 'ok' : 'fail'}`}>
+                    {r.ok ? '✓' : '✗'} {r.name}: {r.message}
+                  </span>
+                ))}
+              </div>
+            )}
+            <button className="settings-btn primary" onClick={handleSave} disabled={validating}>
+              {validating ? '验证中...' : '验证并保存'}
+            </button>
           </div>
         </div>
       </div>
