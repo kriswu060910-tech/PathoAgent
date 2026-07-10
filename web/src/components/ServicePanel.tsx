@@ -69,11 +69,11 @@ export function ServicePanel() {
                   />
                   <span className="service-name">{s.label}</span>
                   <span className="service-port">:{s.port}</span>
-                  <span className="service-status-text" style={{ color: statusColor, fontSize: '12px', marginLeft: '6px' }}>
+                  <span className="service-status-text" data-color={statusColor}>
                     {statusText}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
+                <div className="service-actions">
                   <button
                     className="service-action-btn log"
                     onClick={() => showLogs(name)}
@@ -99,7 +99,7 @@ export function ServicePanel() {
             <div className="service-log-viewer">
               <div className="service-log-header">
                 <span>{services[logName]?.label} 日志</span>
-                <div style={{ display: 'flex', gap: '4px' }}>
+                <div className="service-actions">
                   <button className="service-action-btn log" onClick={() => showLogs(logName)}>刷新</button>
                   <button className="service-close-btn" onClick={() => setLogName(null)}>✕</button>
                 </div>

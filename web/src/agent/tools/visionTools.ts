@@ -1,8 +1,7 @@
 import type { AnnotationBox, Tool } from '../types'
 import { analyzeImages, detectObjectsWithEdges, type ImageAttachment } from '../vision'
-import { NO_IMAGE_MSG } from './shared'
+import { NO_IMAGE_MSG, type GetImages } from './shared'
 
-type GetImages = () => ImageAttachment[]
 type OnAnnotate = (boxes: AnnotationBox[]) => void
 
 function buildPrefix(images: ImageAttachment[]): string {

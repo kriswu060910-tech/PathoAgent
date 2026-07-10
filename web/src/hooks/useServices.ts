@@ -58,7 +58,7 @@ export function useServices() {
     } finally {
       setLoading('')
     }
-  }, [fetchStatus])
+  }, [])
 
   const fetchLogs = useCallback(async (name: string): Promise<string> => {
     try {

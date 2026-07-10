@@ -10,6 +10,8 @@
   --accent-hover: #6366f1;
   --accent-bg: rgba(129, 140, 248, 0.15);
   --error: #f87171;
+  --text-sub: #9ca3af;
+  --bg-hover: #1a1a1a;
   --shadow:
     rgba(0, 0, 0, 0.5) 0 8px 16px -4px,
     rgba(0, 0, 0, 0.3) 0 4px 8px -2px;
@@ -791,6 +793,13 @@ body {
 
 .service-status-text {
   white-space: nowrap;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.service-actions {
+  display: flex;
+  gap: 4px;
 }
 
 /* Responsive */

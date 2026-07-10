@@ -20,20 +20,22 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-PYTHON = r"D:\miniconda3\envs\patho\python.exe"
-LOG_DIR = Path(r"D:\agent\logs")
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+PYTHON = os.environ.get("PYTHON_PATH", r"D:\miniconda3\envs\patho\python.exe")
+LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
 SERVICES = {
     "cellpose": {
         "label": "Cellpose 细胞分割",
-        "script": r"D:\agent\cellpose\server.py",
+        "script": str(PROJECT_ROOT / "cellpose" / "server.py"),
         "args": ["--model", "cyto3", "--port", "8002"],
         "port": 8002,
     },
     "patho": {
         "label": "Qwen2.5-VL 病理分析",
-        "script": r"D:\agent\Patho-R1\server.py",
+        "script": str(PROJECT_ROOT / "Patho-R1" / "server.py"),
         "args": ["--model", "qwen", "--port", "8001"],
         "port": 8001,
     },

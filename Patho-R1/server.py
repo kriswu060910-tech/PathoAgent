@@ -156,92 +156,7 @@ async def health():
 async def analyze(req: AnalyzeRequest):
     if model is None or processor is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
-
-    try:
-        # 解析 base64 图片
-        image_data = req.image
-        if image_data.startswith("data:"):
-            image_data = image_data.split(",", 1)[1]
-
-        img_bytes = base64.b64decode(image_data)
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        img = preprocess_image(img)
-
-        # 保存临时文件（transformers 需要文件路径）
-        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-        img.save(tmp.name, "JPEG")
-        tmp_path = tmp.name
-
-        # 构建消息
-        style_hint = (
-            "Provide concise reasoning with at most 5 words per step."
-            if req.style == "cod"
-            else "Provide detailed step-by-step reasoning."
-        )
-
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT + " " + style_hint},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": tmp_path},
-                    {"type": "text", "text": req.question},
-                ],
-            },
-        ]
-
-        # 推理
-        from qwen_vl_utils import process_vision_info
-
-        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        image_inputs, video_inputs = process_vision_info(messages)
-        inputs = processor(
-            text=[text],
-            images=image_inputs,
-            videos=video_inputs,
-            padding=True,
-            return_tensors="pt",
-        )
-        inputs = inputs.to(model.device)
-
-        with torch.no_grad():
-            generated_ids = model.generate(**inputs, max_new_tokens=1024)
-
-        generated_ids_trimmed = [
-            out_ids[len(in_ids):]
-            for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-        raw_output = processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True)[0]
-
-        # 显式释放张量
-        del inputs, generated_ids, generated_ids_trimmed
-        torch.cuda.empty_cache()
-
-        # 解析 <think> 和 <answer> 标签
-        thinking = ""
-        answer = raw_output
-
-        if "<think>" in raw_output and "</think>" in raw_output:
-            thinking = raw_output.split("<think>")[1].split("</think>")[0].strip()
-        if "<answer>" in raw_output and "</answer>" in raw_output:
-            answer = raw_output.split("<answer>")[1].split("</answer>")[0].strip()
-        elif "</think>" in raw_output:
-            answer = raw_output.split("</think>")[-1].strip()
-
-        return AnalyzeResponse(thinking=thinking, answer=answer, raw=raw_output)
-
-    except torch.cuda.OutOfMemoryError as e:
-        cleanup_gpu()
-        raise HTTPException(status_code=500, detail=f"GPU 显存不足: {e}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # 清理临时文件和 GPU 缓存
-        cleanup_gpu()
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+    return await _run_inference(req.image, req.question, req.style)
 
 
 REPORT_PROMPT = (
@@ -282,7 +197,6 @@ async def region(req: RegionRequest):
 
 async def _run_inference(image_b64: str, question: str, style: str) -> AnalyzeResponse:
     """共享推理逻辑"""
-    import tempfile
     from qwen_vl_utils import process_vision_info
 
     image_data = image_b64
@@ -293,28 +207,29 @@ async def _run_inference(image_b64: str, question: str, style: str) -> AnalyzeRe
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     img = preprocess_image(img)
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-    img.save(tmp.name, "JPEG")
-    tmp_path = tmp.name
-
-    style_hint = (
-        "Provide concise reasoning with at most 5 words per step."
-        if style == "cod"
-        else "Provide detailed step-by-step reasoning."
-    )
-
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT + " " + style_hint},
-        {
-            "role": "user",
-            "content": [
-                {"type": "image", "image": tmp_path},
-                {"type": "text", "text": question},
-            ],
-        },
-    ]
-
+    tmp_path = None
     try:
+        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        img.save(tmp.name, "JPEG")
+        tmp_path = tmp.name
+
+        style_hint = (
+            "Provide concise reasoning with at most 5 words per step."
+            if style == "cod"
+            else "Provide detailed step-by-step reasoning."
+        )
+
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT + " " + style_hint},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": tmp_path},
+                    {"type": "text", "text": question},
+                ],
+            },
+        ]
+
         text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         image_inputs, video_inputs = process_vision_info(messages)
         inputs = processor(
@@ -349,10 +264,11 @@ async def _run_inference(image_b64: str, question: str, style: str) -> AnalyzeRe
         raise HTTPException(status_code=500, detail=f"GPU 显存不足: {e}")
     finally:
         cleanup_gpu()
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------

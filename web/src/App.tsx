@@ -21,7 +21,7 @@ function App() {
   return (
     <>
       <SplashScreen />
-      <div className="app app-content">
+      <div className="app">
         <Sidebar
           conversations={conversations}
           activeId={activeId}

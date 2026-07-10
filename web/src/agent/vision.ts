@@ -62,16 +62,6 @@ points 为沿物体轮廓的近似多边形顶点（4-8 个点即可，无需精
 x, y, width, height 为包含该物体的最小外接矩形。
 color 为可选的十六进制颜色值（如 "#ef4444"），用于区分不同类型的物体。如果不需要区分颜色可省略。`
 
-export function _buildCustomGroundingPrompt(task: string): string {
-  return `请根据以下任务检测图中的目标，以严格的 JSON 数组返回，不要包含任何其他文字或 markdown 标记。
-任务：${task}
-格式：[{"label":"目标名称或分类","x":左上角x比例,"y":左上角y比例,"width":宽度比例,"height":高度比例,"points":[{"x":x1,"y":y1},{"x":x2,"y":y2},...],"color":"#hex"}]
-坐标为 0 到 1 之间的浮点数，表示相对于图片尺寸的比例位置。
-points 为沿目标轮廓的近似多边形顶点（4-8 个点即可，无需精确贴边），按顺时针或逆时针顺序排列。
-x, y, width, height 为包含该目标的最小外接矩形。
-color 为十六进制颜色值，用于区分不同类别的目标。例如异常/病变区域用 "#ef4444"（红色），正常区域用 "#22c55e"（绿色），不确定用 "#eab308"（黄色）。请根据任务语义合理分配颜色。`
-}
-
 export async function detectObjects(
   image: ImageAttachment,
   customPrompt?: string,

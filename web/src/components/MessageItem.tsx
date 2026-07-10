@@ -42,7 +42,7 @@ export function MessageItem({ message }: MessageItemProps) {
           </div>
         )}
         <div className="message-content">
-          {message.content || (message.status === 'sending' ? '' : '')}
+          {message.content}
           {message.status === 'streaming' && <span className="cursor" />}
         </div>
         <div className="message-meta">

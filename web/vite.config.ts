@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { spawn, type ChildProcess } from 'child_process'
+import { resolve, join } from 'path'
 import type { Plugin } from 'vite'
 
-const PYTHON = 'D:\\miniconda3\\envs\\patho\\python.exe'
-const LAUNCHER_SCRIPT = 'D:\\agent\\launcher.py'
+const PROJECT_ROOT = resolve(__dirname, '..')
+const PYTHON = process.env.PYTHON_PATH || 'python'
+const LAUNCHER_SCRIPT = join(PROJECT_ROOT, 'launcher.py')
 
 function launcherPlugin(): Plugin {
   let proc: ChildProcess | null = null
@@ -13,7 +15,7 @@ function launcherPlugin(): Plugin {
     configureServer(server) {
       proc = spawn(PYTHON, ['-u', LAUNCHER_SCRIPT], {
         stdio: 'inherit',
-        cwd: 'D:\\agent',
+        cwd: PROJECT_ROOT,
       })
       console.log(`[auto-launcher] 已启动 launcher (pid=${proc.pid})`)
       proc.on('exit', (code) => {
