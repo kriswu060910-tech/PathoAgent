@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Generator
 
 from PIL import Image
+from PIL.Image import DecompressionBombError
 
 import config
 from logger import setup_logger
@@ -19,17 +20,27 @@ logger = setup_logger("patho", config.PROJECT_ROOT / "logs")
 # base64 最大解码大小：20MB（防止恶意请求导致 OOM）
 MAX_IMAGE_BASE64_SIZE = 20 * 1024 * 1024
 
+# 图片最大像素数：20,000 x 20,000（PIL 解压缩炸弹防护）
+MAX_IMAGE_PIXELS = 20_000 * 20_000
+Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+
 
 class ImageTooLargeError(ValueError):
-    """图片 base64 数据超过允许的最大大小。"""
+    """图片超过允许的最大大小（base64 数据量或像素数）。"""
 
-    def __init__(self, size: int, limit: int) -> None:
+    def __init__(self, size: int, limit: int, kind: str = "base64") -> None:
         self.size = size
         self.limit = limit
-        super().__init__(
-            f"图片数据过大 ({size / 1024 / 1024:.1f}MB)，"
-            f"上限 {limit / 1024 / 1024:.0f}MB"
-        )
+        self.kind = kind
+        if kind == "pixels":
+            super().__init__(
+                f"图片像素过多 ({size:,})，上限 {limit:,} 像素"
+            )
+        else:
+            super().__init__(
+                f"图片数据过大 ({size / 1024 / 1024:.1f}MB)，"
+                f"上限 {limit / 1024 / 1024:.0f}MB"
+            )
 
 
 def decode_base64_image(image_b64: str) -> Image.Image:
@@ -47,9 +58,18 @@ def decode_base64_image(image_b64: str) -> Image.Image:
         raise ValueError(f"图片 base64 数据无效: {exc}") from exc
 
     try:
-        return Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    except DecompressionBombError as exc:
+        raise ImageTooLargeError(0, MAX_IMAGE_PIXELS, kind="pixels") from exc
     except Exception as exc:
         raise ValueError(f"无法解析图片文件: {exc}") from exc
+
+    if img.width * img.height > MAX_IMAGE_PIXELS:
+        raise ImageTooLargeError(
+            img.width * img.height, MAX_IMAGE_PIXELS, kind="pixels"
+        )
+
+    return img
 
 
 def preprocess_image(img: Image.Image, max_dim: int | None = None) -> Image.Image:
@@ -70,8 +90,8 @@ def temp_image_file(img: Image.Image) -> Generator[str, None, None]:
     tmp_path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            img.save(tmp.name, "JPEG")
             tmp_path = tmp.name
+            img.save(tmp_path, "JPEG")
         yield tmp_path
     finally:
         if tmp_path:

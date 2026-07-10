@@ -12,9 +12,9 @@ API 端点：
 """
 
 import argparse
+import asyncio
 import signal
 import sys
-import threading
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -39,10 +39,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_AUTO_START = False
+
+
+@app.on_event("startup")
+async def _auto_start_services():
+    if _AUTO_START:
+        asyncio.create_task(manager.start_all(delay_seconds=1.0))
+
 
 @app.get("/status")
 async def status():
-    return manager.status()
+    return await manager.status()
 
 
 @app.get("/logs/{name}")
@@ -78,12 +86,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.auto_start:
-        threading.Thread(
-            target=manager.start_all,
-            kwargs={"delay_seconds": 1.0},
-            daemon=True,
-        ).start()
+    _AUTO_START = args.auto_start
 
     if not Path(config.PYTHON).exists():
         logger.error(f"配置的 Python 解释器不存在: {config.PYTHON}")

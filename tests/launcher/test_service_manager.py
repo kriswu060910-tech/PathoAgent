@@ -1,7 +1,8 @@
 """Launcher ServiceManager 测试。"""
 
+import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -10,8 +11,8 @@ from launcher.service_manager import ServiceManager, _ProcessHandle
 
 def test_status_reports_unknown_service_as_not_running():
     manager = ServiceManager()
-    with patch.object(manager, "_is_port_open", return_value=False):
-        status = manager.status()
+    with patch.object(manager, "_is_port_open", new=AsyncMock(return_value=False)):
+        status = asyncio.run(manager.status())
     assert "cellpose" in status
     assert "patho" in status
     for svc in status.values():
@@ -23,7 +24,7 @@ def test_status_reports_unknown_service_as_not_running():
 def test_start_unknown_service_raises_keyerror():
     manager = ServiceManager()
     with pytest.raises(KeyError):
-        manager.start("unknown")
+        asyncio.run(manager.start("unknown"))
 
 
 def test_stop_unknown_service_raises_keyerror():
@@ -66,8 +67,14 @@ def test_read_tail_more_lines_than_file(tmp_path: Path):
 
 def test_start_skips_when_port_healthy(tmp_path: Path):
     manager = ServiceManager()
-    with patch.object(manager, "_is_port_open", return_value=True):
-        result = manager.start("cellpose", wait=True, timeout_seconds=1)
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+    mock_proc.pid = 1234
+    with patch("launcher.service_manager.subprocess.Popen", return_value=mock_proc):
+        with patch.object(manager, "_is_port_open", new=AsyncMock(return_value=True)):
+            result = asyncio.run(
+                manager.start("cellpose", wait=True, timeout_seconds=1)
+            )
     assert "正在启动中" in result["message"] or "启动成功" in result["message"]
 
 

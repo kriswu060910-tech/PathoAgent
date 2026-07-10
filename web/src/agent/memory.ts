@@ -1,4 +1,5 @@
 import type { MemoryItem } from './types'
+import type { ImageAttachment } from './vision'
 import { generateId } from '../utils'
 
 /**
@@ -30,6 +31,7 @@ export class ConversationMemory {
     content: string,
     toolCallId?: string,
     toolCalls?: MemoryItem['toolCalls'],
+    images?: ImageAttachment[],
   ): MemoryItem {
     const item: MemoryItem = {
       id: generateId(),
@@ -37,6 +39,7 @@ export class ConversationMemory {
       content,
       toolCallId,
       toolCalls,
+      images,
       timestamp: Date.now(),
     }
     this.items.push(item)
@@ -53,6 +56,16 @@ export class ConversationMemory {
 
   getContext(): MemoryItem[] {
     return [...this.items]
+  }
+
+  getLastImages(): import('./vision').ImageAttachment[] {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i]
+      if (item.role === 'user' && item.images?.length) {
+        return item.images
+      }
+    }
+    return []
   }
 
   last(): MemoryItem | undefined {

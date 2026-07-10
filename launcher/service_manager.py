@@ -7,7 +7,6 @@ import atexit
 import asyncio
 import subprocess
 import sys
-import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,13 +76,13 @@ class ServiceManager:
             raise KeyError(f"Unknown service: {name}")
         return self._services[name]
 
-    def status(self) -> dict[str, dict]:
+    async def status(self) -> dict[str, dict]:
         """只读查询所有服务状态，不修改内部进程表。"""
         result = {}
         for name, svc in self._services.items():
             handle = self._processes.get(name)
             alive = handle is not None and handle.proc.poll() is None
-            healthy = self._is_port_open(svc.port)
+            healthy = await self._is_port_open(svc.port)
             crashed = handle is not None and handle.proc.poll() is not None
 
             result[name] = {
@@ -187,7 +186,7 @@ class ServiceManager:
 
         # 等待端口就绪
         for _ in range(timeout_seconds):
-            if self._is_port_open(svc.port):
+            if await self._is_port_open(svc.port):
                 return {"message": f"{svc.label} 启动成功"}
             if proc.poll() is not None:
                 return {
@@ -225,13 +224,13 @@ class ServiceManager:
             handle.close_log()
         return {"message": f"{svc.label} 已停止"}
 
-    def start_all(self, delay_seconds: float = 1.0) -> None:
+    async def start_all(self, delay_seconds: float = 1.0) -> None:
         """后台启动所有未运行的服务（用于 --auto-start）。"""
-        time.sleep(delay_seconds)
+        await asyncio.sleep(delay_seconds)
         for name, svc in self._services.items():
-            if self._is_port_open(svc.port):
+            if await self._is_port_open(svc.port):
                 continue
-            # 直接同步启动（wait=False 不需要 async sleep）
+            # 直接启动（wait=False 不需要 async sleep）
             handle = self._processes.get(name)
             if handle is not None and handle.proc.poll() is None:
                 continue
@@ -263,14 +262,17 @@ class ServiceManager:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _is_port_open(port: int) -> bool:
-        try:
-            resp = urllib.request.urlopen(
-                f"http://localhost:{port}/health", timeout=2
-            )
-            return resp.status == 200
-        except Exception:
-            return False
+    async def _is_port_open(port: int) -> bool:
+        def _check() -> bool:
+            try:
+                with urllib.request.urlopen(
+                    f"http://localhost:{port}/health", timeout=2
+                ) as resp:
+                    return resp.status == 200
+            except Exception:
+                return False
+
+        return await asyncio.to_thread(_check)
 
     @staticmethod
     def _open_log(svc: Service):

@@ -31,7 +31,7 @@ async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
         body: JSON.stringify({ model: s.model || 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
         signal: controller.signal,
       })
-      if (res.ok || res.status === 200) {
+      if (res.ok) {
         results.push({ name: 'LLM API', ok: true, message: '连接成功' })
       } else if (res.status === 401 || res.status === 403) {
         results.push({ name: 'LLM API', ok: false, message: 'API Key 无效或已过期' })
@@ -65,7 +65,7 @@ async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
       } else if (res.status === 401 || res.status === 403) {
         results.push({ name: '视觉 API', ok: false, message: 'API Key 无效' })
       } else {
-        results.push({ name: '视觉 API', ok: true, message: `已连接 (HTTP ${res.status})` })
+        results.push({ name: '视觉 API', ok: false, message: `请求失败 (${res.status})` })
       }
     } catch (err) {
       const msg = err instanceof DOMException && err.name === 'AbortError'

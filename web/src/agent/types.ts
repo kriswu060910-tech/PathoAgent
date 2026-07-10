@@ -27,6 +27,8 @@ export interface MemoryItem {
   toolCallId?: string
   /** assistant 发起 tool_calls 时携带的元数据 */
   toolCalls?: ToolCall[]
+  /** 用户消息附带的图片（用于跨轮次恢复图片上下文） */
+  images?: import('./vision').ImageAttachment[]
   timestamp: number
 }
 

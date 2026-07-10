@@ -44,6 +44,27 @@ def test_decode_base64_image_rejects_oversized():
         image_utils.decode_base64_image(huge)
 
 
+def test_decode_base64_image_rejects_too_many_pixels(monkeypatch):
+    monkeypatch.setattr(image_utils, "MAX_IMAGE_PIXELS", 10)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10_000 * 10_000)
+    img = Image.new("RGB", (10, 10), color="red")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    with pytest.raises(image_utils.ImageTooLargeError):
+        image_utils.decode_base64_image(b64)
+
+
+def test_decode_base64_image_rejects_decompression_bomb(monkeypatch):
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)
+    img = Image.new("RGB", (10, 10), color="red")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    with pytest.raises(image_utils.ImageTooLargeError):
+        image_utils.decode_base64_image(b64)
+
+
 def test_preprocess_image_does_not_resize_small_image():
     from PIL import Image
 

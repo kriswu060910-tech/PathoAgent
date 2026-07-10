@@ -76,11 +76,17 @@ export class ReactAgent {
     onEvent?: (event: AgentEvent) => void,
     options?: { enableSearch?: boolean; images?: ImageAttachment[] },
   ): Promise<string> {
-    this.currentImages = options?.images ?? []
-    const perceivedInput = this.currentImages.length > 0
-      ? `${input}\n\n（用户附带了 ${this.currentImages.length} 张图片，请使用合适的视觉工具进行分析）`
-      : input
-    this.memory.add('user', perceivedInput)
+    if (options?.images?.length) {
+      this.currentImages = options.images
+    } else {
+      this.currentImages = this.memory.getLastImages()
+    }
+    const perceivedInput = this.currentImages.length > 0 && !options?.images?.length
+      ? `${input}\n\n（用户之前附带了 ${this.currentImages.length} 张图片，请使用合适的视觉工具继续分析）`
+      : this.currentImages.length > 0
+        ? `${input}\n\n（用户附带了 ${this.currentImages.length} 张图片，请使用合适的视觉工具进行分析）`
+        : input
+    this.memory.add('user', perceivedInput, undefined, undefined, options?.images?.length ? options.images : undefined)
 
     const activeTools = this.getActiveTools(options?.enableSearch ?? true)
 

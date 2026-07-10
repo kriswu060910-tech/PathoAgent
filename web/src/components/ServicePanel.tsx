@@ -33,6 +33,7 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   const [startingLauncher, setStartingLauncher] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(null)
+  const launcherPollCancel = useRef(false)
   const names = Object.keys(services)
 
   const runningCount = names.filter((n) => services[n].running).length
@@ -48,6 +49,7 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current)
+      launcherPollCancel.current = true
     }
   }, [])
 
@@ -93,18 +95,35 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   }
 
   const handleStartLauncher = async () => {
+    launcherPollCancel.current = false
     setStartingLauncher(true)
     try {
       showToast('正在启动 Launcher...', 'info')
       const result = await startLauncher()
       if (result.ok) {
         showToast(result.message, 'success')
-        setTimeout(() => refresh(), 3000)
+        for (let i = 0; i < 30; i++) {
+          await new Promise((r) => setTimeout(r, 1000))
+          if (launcherPollCancel.current) return
+          try {
+            const res = await fetch(`${getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || '/api/launcher'}/status`, { signal: AbortSignal.timeout(2000) })
+            if (res.ok) {
+              await refresh()
+              showToast('Launcher 已连接', 'success')
+              return
+            }
+          } catch { /* 还没就绪，继续等 */ }
+        }
+        if (!launcherPollCancel.current) {
+          showToast('Launcher 启动超时，请检查后端日志', 'error')
+        }
       } else {
         showToast(`启动失败: ${result.message}`, 'error')
       }
     } finally {
-      setStartingLauncher(false)
+      if (!launcherPollCancel.current) {
+        setStartingLauncher(false)
+      }
     }
   }
 

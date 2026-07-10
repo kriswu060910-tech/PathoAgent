@@ -31,6 +31,15 @@ export interface UserProfile {
 
 // --- 远程 API 调用 ---
 
+class HttpError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+    this.name = 'HttpError'
+  }
+}
+
 function getAuthUrl(): string {
   return getSettings().authApiUrl || '/api/auth'
 }
@@ -46,7 +55,7 @@ async function apiCall(path: string, options?: { method?: string; body?: Record<
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    throw new Error((data as Record<string, string>).detail || `请求失败 (${res.status})`)
+    throw new HttpError(res.status, (data as Record<string, string>).detail || `请求失败 (${res.status})`)
   }
   return res.json()
 }
@@ -109,7 +118,31 @@ function saveLocalUsers(users: Record<string, LocalUser>) {
   localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users))
 }
 
-function localHash(password: string, salt: string): string {
+async function localHash(password: string, salt: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  )
+  const derived = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: encoder.encode(salt),
+      iterations: 600_000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256
+  )
+  const arr = new Uint8Array(derived)
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** @deprecated 仅用于旧密码迁移，新注册不使用 */
+function legacyHash(password: string, salt: string): string {
   let h = 0
   const s = salt + password
   for (let i = 0; i < s.length; i++) {
@@ -231,8 +264,11 @@ export async function register(username: string, password: string, displayName: 
     updateSettings(currentUser.settings)
     notify()
     return { ok: true }
-  } catch {
-    // 远程不可用，降级为本地注册
+  } catch (err) {
+    if (err instanceof HttpError) {
+      return { ok: false, error: err.message }
+    }
+    // 远程不可用（网络错误），降级为本地注册
   }
 
   // 本地注册
@@ -241,7 +277,7 @@ export async function register(username: string, password: string, displayName: 
   const salt = localGenerateSalt()
   const profile: LocalUser = {
     username: trimmedUser,
-    passwordHash: localHash(password, salt),
+    passwordHash: await localHash(password, salt),
     salt,
     displayName: displayName.trim() || trimmedUser,
     settings: { ...DEFAULT_SETTINGS },
@@ -276,15 +312,31 @@ export async function login(username: string, password: string): Promise<{ ok: b
     })
     notify()
     return { ok: true }
-  } catch {
-    // 远程不可用，降级为本地登录
+  } catch (err) {
+    if (err instanceof HttpError) {
+      return { ok: false, error: err.message }
+    }
+    // 远程不可用（网络错误），降级为本地登录
   }
 
   // 本地登录
   const users = loadLocalUsers()
   const user = users[trimmedUser]
   if (!user) return { ok: false, error: '用户不存在（认证服务不可用）' }
-  if (localHash(password, user.salt) !== user.passwordHash) return { ok: false, error: '密码错误' }
+
+  const newHash = await localHash(password, user.salt)
+  if (newHash === user.passwordHash) {
+    // PBKDF2 格式匹配，正常登录
+  } else if (user.passwordHash.startsWith('h_')) {
+    // 旧格式 — 用 legacyHash 验证，成功后升级到 PBKDF2
+    if (legacyHash(password, user.salt) !== user.passwordHash) return { ok: false, error: '密码错误' }
+    user.passwordHash = newHash
+    users[trimmedUser] = user
+    saveLocalUsers(users)
+  } else {
+    return { ok: false, error: '密码错误' }
+  }
+
   currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false }
   currentToken = null
   saveSession(trimmedUser, null)
