@@ -6,6 +6,39 @@ interface ChatInputProps {
   disabled?: boolean
 }
 
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
+const COMPRESS_THRESHOLD = 2 * 1024 * 1024 // 2MB 以上触发压缩
+
+function compressImage(dataUrl: string, maxWidth = 1920, quality = 0.85): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => resolve(dataUrl)
+    img.src = dataUrl
+  })
+}
+
+async function processImage(file: File): Promise<{ dataUrl: string; name: string; type: 'image' } | null> {
+  if (file.size > MAX_IMAGE_SIZE) {
+    alert(`图片 "${file.name}" 超过 10MB 限制，请压缩后重试。`)
+    return null
+  }
+  let dataUrl = await fileToDataUrl(file)
+  if (file.size > COMPRESS_THRESHOLD) {
+    dataUrl = await compressImage(dataUrl)
+  }
+  return { dataUrl, name: file.name, type: 'image' }
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -21,31 +54,30 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [images, setImages] = useState<MessageAttachment[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const submit = () => {
     if ((!content.trim() && images.length === 0) || disabled) return
     onSend(content, enableSearch, images.length > 0 ? images : undefined)
     setContent('')
     setImages([])
   }
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    submit()
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSubmit(e as unknown as React.FormEvent)
+      submit()
     }
   }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const imageFiles = files.filter((f) => f.type.startsWith('image/'))
-    const newImages = await Promise.all(
-      imageFiles.map(async (file) => ({
-        dataUrl: await fileToDataUrl(file),
-        name: file.name,
-        type: 'image' as const,
-      })),
-    )
+    const results = await Promise.all(imageFiles.map(processImage))
+    const newImages = results.filter((r): r is NonNullable<typeof r> => r !== null)
     setImages((prev) => [...prev, ...newImages])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }

@@ -1,4 +1,5 @@
 import type { Tool } from '../types'
+import { apiPost } from './shared'
 
 /**
  * WebSearch：联网搜索工具包。
@@ -95,24 +96,14 @@ async function searchTavily(query: string, apiKey: string, maxResults: number): 
     throw new Error('使用 Tavily 搜索需要配置 VITE_SEARCH_API_KEY。')
   }
 
-  const res = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      api_key: apiKey,
-      query,
-      search_depth: 'basic',
-      max_results: maxResults,
-      include_answer: false,
-    }),
+  const data = await apiPost<TavilyResponse>('https://api.tavily.com/search', {
+    api_key: apiKey,
+    query,
+    search_depth: 'basic',
+    max_results: maxResults,
+    include_answer: false,
   })
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Tavily API ${res.status}: ${text}`)
-  }
-
-  const data = (await res.json()) as TavilyResponse
   return (data.results || []).map((r) => ({
     title: r.title || '',
     url: r.url || '',
@@ -134,21 +125,10 @@ async function searchSerper(query: string, apiKey: string, maxResults: number): 
     throw new Error('使用 Serper 搜索需要配置 VITE_SEARCH_API_KEY。')
   }
 
-  const res = await fetch('https://google.serper.dev/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-KEY': apiKey,
-    },
-    body: JSON.stringify({ q: query, num: maxResults }),
-  })
+  const data = await apiPost<SerperResponse>('https://google.serper.dev/search', {
+    q: query, num: maxResults,
+  }, { 'X-API-KEY': apiKey })
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Serper API ${res.status}: ${text}`)
-  }
-
-  const data = (await res.json()) as SerperResponse
   return (data.organic || []).map((r) => ({
     title: r.title || '',
     url: r.link || r.url || '',

@@ -1,13 +1,13 @@
 /**
  * 安全的四则运算求值器，不使用 eval。
- * 支持 + - * / 和括号，使用调度场算法（shunting-yard）。
+ * 支持 + - * / 、括号和一元负号，使用调度场算法（shunting-yard）。
  */
 export function evaluateExpression(expression: string): number {
   const tokens = tokenize(expression)
   const output: (number | string)[] = []
   const operators: string[] = []
 
-  const precedence: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2 }
+  const precedence: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2, 'u': 3 }
 
   for (const token of tokens) {
     if (typeof token === 'number') {
@@ -43,6 +43,10 @@ function evaluateRPN(rpn: (number | string)[]): number {
   for (const token of rpn) {
     if (typeof token === 'number') {
       stack.push(token)
+    } else if (token === 'u') {
+      const a = stack.pop()
+      if (a === undefined) throw new Error('Invalid expression')
+      stack.push(-a)
     } else {
       const b = stack.pop()
       const a = stack.pop()
@@ -51,7 +55,10 @@ function evaluateRPN(rpn: (number | string)[]): number {
         case '+': stack.push(a + b); break
         case '-': stack.push(a - b); break
         case '*': stack.push(a * b); break
-        case '/': stack.push(a / b); break
+        case '/':
+          if (b === 0) throw new Error('除数不能为零')
+          stack.push(a / b)
+          break
       }
     }
   }
@@ -62,8 +69,10 @@ function evaluateRPN(rpn: (number | string)[]): number {
 function tokenize(expression: string): (number | string)[] {
   const tokens: (number | string)[] = []
   let current = ''
+  const cleaned = expression.replace(/\s/g, '')
 
-  for (const char of expression.replace(/\s/g, '')) {
+  for (let i = 0; i < cleaned.length; i++) {
+    const char = cleaned[i]
     if (/[0-9.]/.test(char)) {
       current += char
     } else {
@@ -71,7 +80,18 @@ function tokenize(expression: string): (number | string)[] {
         tokens.push(Number.parseFloat(current))
         current = ''
       }
-      tokens.push(char)
+      // 一元负号：出现在开头、左括号后、或另一个运算符后
+      if (char === '-' && (tokens.length === 0 ||
+          tokens[tokens.length - 1] === '(' ||
+          typeof tokens[tokens.length - 1] === 'string')) {
+        tokens.push('u')
+      } else if (char === '+' && (tokens.length === 0 ||
+          tokens[tokens.length - 1] === '(' ||
+          typeof tokens[tokens.length - 1] === 'string')) {
+        // 一元正号，直接忽略
+      } else {
+        tokens.push(char)
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 import type { Message } from '../types/agent'
 import { formatTime } from '../utils'
+import { BoundingBoxOverlay } from './BoundingBoxOverlay'
 
 interface MessageItemProps {
   message: Message
@@ -7,6 +8,7 @@ interface MessageItemProps {
 
 export function MessageItem({ message }: MessageItemProps) {
   const isUser = message.role === 'user'
+  const hasAnnotations = !isUser && message.annotations && message.annotations.length > 0
 
   return (
     <div className={`message ${isUser ? 'user' : 'agent'}`}>
@@ -26,12 +28,16 @@ export function MessageItem({ message }: MessageItemProps) {
         {message.images && message.images.length > 0 && (
           <div className="message-images">
             {message.images.map((img, i) => (
-              <img
-                key={i}
-                src={img.dataUrl}
-                alt={img.name}
-                className="message-image"
-              />
+              <div key={i} className={`image-wrapper ${hasAnnotations ? 'annotated' : ''}`}>
+                <img
+                  src={img.dataUrl}
+                  alt={img.name}
+                  className="message-image"
+                />
+                {hasAnnotations && message.annotations && (
+                  <BoundingBoxOverlay boxes={message.annotations} />
+                )}
+              </div>
             ))}
           </div>
         )}

@@ -32,19 +32,9 @@ export const datetimeTool: Tool = {
   },
 }
 
-export const weatherTool: Tool = {
-  name: 'weather',
-  description: '查询指定城市的天气（演示用，返回模拟数据）。',
-  parameters: { city: '城市名称，例如 北京' },
-  execute(args) {
-    const city = (args.city || '未知城市').trim()
-    const conditions = ['晴', '多云', '阴', '小雨', '雷阵雨']
-    const condition = conditions[Math.floor(Math.random() * conditions.length)]
-    const temperature = 18 + Math.floor(Math.random() * 15)
-    return `${city}当前天气：${condition}，气温 ${temperature}°C。`
-  },
-}
-
-export const builtinTools: Tool[] = [calculatorTool, datetimeTool, weatherTool, webSearchTool]
+export const builtinTools: Tool[] = [calculatorTool, datetimeTool, webSearchTool]
 
 export { webSearchTool, createWebSearchTool } from './tools/search'
+export { createVisionTools } from './tools/visionTools'
+export { createPathologyTools } from './tools/pathologyTools'
+export { createCellposeTools } from './tools/cellposeTools'

@@ -1,5 +1,6 @@
 import type { Conversation } from '../types/agent'
 import { formatTime } from '../utils'
+import sealIcon from '../assets/seal.png'
 
 interface SidebarProps {
   conversations: Conversation[]
@@ -19,7 +20,10 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h2>Cookie</h2>
+        <div className="sidebar-brand">
+          <img src={sealIcon} alt="" className="sidebar-logo" />
+          <h2>Cookie</h2>
+        </div>
         <button type="button" className="new-chat-btn" onClick={onCreate}>
           + 新对话
         </button>

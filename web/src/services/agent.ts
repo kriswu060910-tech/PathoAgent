@@ -1,6 +1,5 @@
-import type { AgentRequest, AgentResponse, AgentService } from '../types/agent'
+import type { AgentRequest, AgentResponse, AgentService, AnnotationBox } from '../types/agent'
 import { ReactAgent } from '../agent'
-import type { ImageAttachment } from '../agent/vision'
 
 /**
  * 使用 ReactAgent 替换原来的 MockAgentService。
@@ -24,36 +23,50 @@ export class AgentServiceImpl implements AgentService {
     return this.agents.get(conversationId)!
   }
 
-  private toImageAttachments(images?: AgentRequest['images']): ImageAttachment[] | undefined {
-    return images?.map((img) => ({ dataUrl: img.dataUrl, name: img.name }))
+  removeAgent(conversationId: string): void {
+    this.agents.delete(conversationId)
   }
 
   async sendMessage(request: AgentRequest): Promise<AgentResponse> {
-    const agent = this.getAgent(request.conversationId)
-    const answer = await agent.run(request.content, undefined, {
-      enableSearch: request.enableSearch,
-      images: this.toImageAttachments(request.images),
-    })
-    return { content: answer, done: true }
+    const { answer, annotations } = await this.runWithAgent(request)
+    return {
+      content: answer,
+      done: true,
+      annotations,
+    }
   }
 
   async streamMessage(
     request: AgentRequest,
     onChunk: (chunk: string) => void,
   ): Promise<void> {
-    const agent = this.getAgent(request.conversationId)
-
     let answer = ''
-    await agent.run(request.content, (event) => {
+    await this.runWithAgent(request, (event) => {
       if (event.type === 'answer') {
         const chunk = event.content.slice(answer.length)
         answer = event.content
         onChunk(chunk)
       }
-    }, {
-      enableSearch: request.enableSearch,
-      images: this.toImageAttachments(request.images),
     })
+  }
+
+  getAnnotations(conversationId: string) {
+    return this.agents.get(conversationId)?.getAnnotations() ?? []
+  }
+
+  private async runWithAgent(
+    request: AgentRequest,
+    onEvent?: (event: import('../agent').AgentEvent) => void,
+  ): Promise<{ answer: string; annotations: AnnotationBox[] | undefined }> {
+    const agent = this.getAgent(request.conversationId)
+    agent.clearAnnotations()
+    const images = request.images?.map((img) => ({ dataUrl: img.dataUrl, name: img.name, type: 'image' as const }))
+    const answer = await agent.run(request.content, onEvent, {
+      enableSearch: request.enableSearch,
+      images,
+    })
+    const annotations = agent.getAnnotations()
+    return { answer, annotations: annotations.length > 0 ? annotations : undefined }
   }
 }
 

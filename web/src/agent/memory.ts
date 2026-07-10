@@ -11,8 +11,10 @@ import { generateId } from '../utils'
  */
 export class ConversationMemory {
   private items: MemoryItem[] = []
+  private readonly maxItems: number
 
-  constructor(systemPrompt?: string) {
+  constructor(systemPrompt?: string, maxItems = 60) {
+    this.maxItems = maxItems
     if (systemPrompt) {
       this.items.push({
         id: generateId(),
@@ -38,6 +40,14 @@ export class ConversationMemory {
       timestamp: Date.now(),
     }
     this.items.push(item)
+
+    // 滑动窗口：超出上限时保留 system prompt + 最近的对话
+    if (this.items.length > this.maxItems) {
+      const system = this.items.find((i) => i.role === 'system')
+      const recent = this.items.slice(-this.maxItems + (system ? 1 : 0))
+      this.items = system ? [system, ...recent] : recent
+    }
+
     return item
   }
 

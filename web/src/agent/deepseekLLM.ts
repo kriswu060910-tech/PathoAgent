@@ -1,4 +1,5 @@
 import type { MemoryItem, Thought, Tool, LLM } from './types'
+import { apiPost, parseArgs } from './tools/shared'
 
 interface DeepSeekMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -51,18 +52,12 @@ export class DeepSeekLLM implements LLM {
 
     const toolCalls = choice.message?.tool_calls
     if (toolCalls && toolCalls.length > 0) {
-      const call = toolCalls[0]
-      const args = safeParseArgs(call.function?.arguments)
+      const normalized = normalizeToolCalls(toolCalls)
+      const first = normalized[0]
       return {
-        reasoning: `模型决定调用工具 ${call.function?.name}。`,
-        action: { tool: call.function?.name || '', args },
-        toolCalls: toolCalls.map((tc) => ({
-          id: tc.id || 'tool-call-1',
-          function: {
-            name: tc.function?.name || '',
-            arguments: tc.function?.arguments || '{}',
-          },
-        })),
+        reasoning: `模型决定调用工具 ${first.function.name}。`,
+        action: { tool: first.function.name, args: parseArgs(first.function.arguments) },
+        toolCalls: normalized,
       }
     }
 
@@ -72,18 +67,9 @@ export class DeepSeekLLM implements LLM {
     }
   }
 
-  async answerWithObservation(
-    context: MemoryItem[],
-    _observation: string,
-    tools?: Tool[],
-  ): Promise<string> {
-    const messages = this.buildMessages(context)
-    const response = await this.chat(messages, false, tools)
-    return response.choices?.[0]?.message?.content || '抱歉，整理结果时出错了。'
-  }
 
   private buildMessages(context: MemoryItem[]): DeepSeekMessage[] {
-    return context.map((item) => {
+    const messages: DeepSeekMessage[] = context.map((item) => {
       if (item.role === 'tool') {
         return {
           role: 'tool',
@@ -97,16 +83,56 @@ export class DeepSeekLLM implements LLM {
           content: item.content || null,
           tool_calls: item.toolCalls.map((tc) => ({
             id: tc.id,
-            type: 'function',
+            type: 'function' as const,
             function: tc.function,
           })),
-        } as DeepSeekMessage
+        }
       }
       return {
         role: item.role === 'agent' ? 'assistant' : item.role,
         content: item.content,
-      } as DeepSeekMessage
+      }
     })
+
+    // 校验：确保每个 assistant tool_call 都有对应的 tool 消息，反之亦然
+    const expectedIds = new Set<string>()
+    const providedIds = new Set<string>()
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        for (const tc of msg.tool_calls) expectedIds.add(tc.id)
+      }
+      if (msg.role === 'tool' && msg.tool_call_id) {
+        providedIds.add(msg.tool_call_id)
+      }
+    }
+
+    const result: DeepSeekMessage[] = []
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
+
+      // 孤立 tool 消息（没有对应 assistant tool_calls）→ 转为 user 消息保留内容
+      if (msg.role === 'tool' && msg.tool_call_id && !expectedIds.has(msg.tool_call_id)) {
+        result.push({ role: 'user', content: msg.content })
+        continue
+      }
+
+      result.push(msg)
+
+      // assistant 带 tool_calls → 补齐缺失的 tool 响应
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        for (const tc of msg.tool_calls) {
+          if (!providedIds.has(tc.id)) {
+            result.push({
+              role: 'tool',
+              content: '{}',
+              tool_call_id: tc.id,
+            })
+          }
+        }
+      }
+    }
+
+    return result
   }
 
   private async chat(messages: DeepSeekMessage[], includeTools: boolean, toolsOverride?: Tool[]): Promise<DeepSeekResponse> {
@@ -133,32 +159,21 @@ export class DeepSeekLLM implements LLM {
       }))
     }
 
-    const res = await fetch(`${this.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
+    return apiPost<DeepSeekResponse>(`${this.baseURL}/chat/completions`, body, {
+      Authorization: `Bearer ${this.apiKey}`,
     })
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`DeepSeek API error ${res.status}: ${text}`)
-    }
-
-    return (await res.json()) as DeepSeekResponse
   }
 }
 
-function safeParseArgs(raw?: string): Record<string, string> {
-  if (!raw) return {}
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    return Object.fromEntries(
-      Object.entries(parsed).map(([key, value]) => [key, String(value)]),
-    )
-  } catch {
-    return {}
-  }
+function normalizeToolCalls(
+  raw: Array<{ id?: string; function?: { name?: string; arguments?: string } }> | undefined,
+): Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> {
+  return (raw || []).map((tc, index) => ({
+    id: tc.id || `tool-call-${index + 1}`,
+    type: 'function' as const,
+    function: {
+      name: tc.function?.name || '',
+      arguments: tc.function?.arguments || '{}',
+    },
+  }))
 }

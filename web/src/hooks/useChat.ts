@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { Conversation, Message } from '../types/agent'
 import { agentService } from '../services/agent'
+import type { AgentServiceImpl } from '../services/agent'
 import { generateId } from '../utils'
 
 function createConversation(title = '新对话'): Conversation {
@@ -50,48 +51,48 @@ export function useChat() {
         }
         return next
       })
+      // 清理被删除对话的 Agent 实例，释放内存
+      const svc = agentService as AgentServiceImpl
+      if (typeof svc.removeAgent === 'function') {
+        svc.removeAgent(id)
+      }
     },
     [activeId],
   )
 
-  /** 更新活动对话中指定消息的字段 */
+  const updateActiveMessages = useCallback(
+    (update: (messages: Message[]) => Message[]) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeId
+            ? { ...c, updatedAt: Date.now(), messages: update(c.messages) }
+            : c,
+        ),
+      )
+    },
+    [activeId],
+  )
+
   const patchMessage = useCallback(
     (messageId: string, patch: Partial<Message>) => {
-      setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== activeId) return c
-          return {
-            ...c,
-            updatedAt: Date.now(),
-            messages: c.messages.map((m) =>
-              m.id === messageId ? { ...m, ...patch } : m,
-            ),
-          }
-        }),
+      updateActiveMessages((messages) =>
+        messages.map((m) => (m.id === messageId ? { ...m, ...patch } : m)),
       )
     },
-    [activeId],
+    [updateActiveMessages],
   )
 
-  /** 追加文本到指定消息 */
   const appendToMessage = useCallback(
     (messageId: string, chunk: string) => {
-      setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== activeId) return c
-          return {
-            ...c,
-            updatedAt: Date.now(),
-            messages: c.messages.map((m) =>
-              m.id === messageId
-                ? { ...m, content: m.content + chunk, status: 'streaming' as const }
-                : m,
-            ),
-          }
-        }),
+      updateActiveMessages((messages) =>
+        messages.map((m) =>
+          m.id === messageId
+            ? { ...m, content: m.content + chunk, status: 'streaming' as const }
+            : m,
+        ),
       )
     },
-    [activeId],
+    [updateActiveMessages],
   )
 
   const sendMessage = useCallback(
@@ -130,10 +131,14 @@ export function useChat() {
       setIsLoading(true)
 
       try {
-        const conversation =
-          conversations.find((c) => c.id === activeId) ?? activeConversation
-        const history = [...conversation.messages, userMessage]
-        const request = { conversationId: activeId, messages: history, content: trimmed, enableSearch, images }
+        // 不依赖闭包中的 conversations，Agent 内部 memory 已维护完整上下文
+        const request = {
+          conversationId: activeId,
+          messages: [],
+          content: trimmed,
+          enableSearch,
+          images,
+        }
 
         if (agentService.streamMessage) {
           await agentService.streamMessage(request, (chunk) => {
@@ -144,7 +149,12 @@ export function useChat() {
           patchMessage(agentMsgId, { content: response.content })
         }
 
-        patchMessage(agentMsgId, { status: 'done' })
+        const annotations = agentService.getAnnotations?.(activeId)
+        patchMessage(agentMsgId, {
+          status: 'done',
+          annotations: annotations?.length ? annotations : undefined,
+          images: annotations?.length ? images : undefined,
+        })
       } catch (error) {
         const errorText = error instanceof Error ? error.message : '请求失败，请重试'
         patchMessage(agentMsgId, { content: errorText, status: 'error' })
@@ -152,7 +162,7 @@ export function useChat() {
         setIsLoading(false)
       }
     },
-    [activeId, activeConversation, conversations, isLoading, appendToMessage, patchMessage],
+    [activeId, isLoading, appendToMessage, patchMessage],
   )
 
   return {

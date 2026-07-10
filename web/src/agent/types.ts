@@ -39,6 +39,9 @@ export interface Tool {
   execute(args: Record<string, string>): string | Promise<string>
 }
 
+/** 物体标注框 — 从前端类型层统一导入 */
+export type { AnnotationBox } from '../types/agent'
+
 /** Agent 运行事件，便于前端流式展示 */
 export interface AgentEvent {
   type: 'thought' | 'tool_call' | 'tool_result' | 'answer' | 'error'
@@ -61,7 +64,6 @@ export interface Thought {
 /** LLM 抽象接口：由具体模型实现完整的感知-思考-行动循环 */
 export interface LLM {
   think(context: MemoryItem[], tools?: Tool[]): Promise<Thought>
-  answerWithObservation(context: MemoryItem[], observation: string, tools?: Tool[]): Promise<string>
 }
 
 /** Agent 配置 */
