@@ -190,7 +190,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             {activeSection === 'search' && (
               <div className="settings-section">
                 <p className="settings-section-desc">
-                  配置联网搜索。DuckDuckGo 免费无需 Key；Tavily 和 Serper 需要注册获取 API Key。
+                  默认使用 DuckDuckGo 免费搜索（通过 CORS 代理）。如需更稳定可靠的搜索，建议注册 Tavily API Key（免费额度 1000 次/月）。
                 </p>
                 <div className="settings-field">
                   <label>搜索供应商</label>

@@ -149,20 +149,21 @@ interface SerperResponse {
  * DuckDuckGo 搜索（免费，无需 API Key）。
  *
  * 说明：
- * - 生产环境直接调用 DuckDuckGo 会受浏览器 CORS 限制，建议配置 CORS 代理。
- * - 开发环境已配置 Vite 代理，可直接使用。
+ * - 开发环境走 Vite 代理，可直接使用。
+ * - 生产环境使用内置 CORS 代理（corsproxy.io），无需额外配置。
+ * - 用户可通过 VITE_CORS_PROXY 覆盖默认代理地址。
  */
+const DEFAULT_CORS_PROXY = 'https://corsproxy.io/?'
+
 async function searchDuckDuckGo(query: string, maxResults: number): Promise<SearchResult[]> {
   const target = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-  const corsProxy = import.meta.env.VITE_CORS_PROXY
+  const corsProxy = import.meta.env.VITE_CORS_PROXY || DEFAULT_CORS_PROXY
 
   let url: string
-  if (corsProxy) {
-    url = `${corsProxy}${encodeURIComponent(target)}`
-  } else if (import.meta.env.DEV) {
+  if (import.meta.env.DEV) {
     url = `/api/search/duckduckgo?q=${encodeURIComponent(query)}`
   } else {
-    url = target
+    url = `${corsProxy}${encodeURIComponent(target)}`
   }
 
   const res = await fetch(url, {
