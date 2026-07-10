@@ -43,7 +43,7 @@ SERVICES = {
 #  服务监听
 # ---------------------------------------------------------------------------
 
-DEFAULT_HOST = os.environ.get("LAUNCHER_HOST", "0.0.0.0")
+DEFAULT_HOST = os.environ.get("LAUNCHER_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("LAUNCHER_PORT", "8099"))
 
 # 启动后等待后端服务就绪的最大秒数

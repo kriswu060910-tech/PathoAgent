@@ -136,9 +136,11 @@ class ServiceManager:
     def stop(self, name: str) -> dict:
         """停止指定服务。"""
         svc = self.get(name)
-        proc = self._processes.pop(name, None)
+        proc = self._processes.get(name)
 
         if not proc or proc.poll() is not None:
+            # 进程不存在或已退出，清理残留引用
+            self._processes.pop(name, None)
             return {"message": f"{svc.label} 未在运行"}
 
         proc.terminate()
@@ -146,6 +148,8 @@ class ServiceManager:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(timeout=3)
+        self._processes.pop(name, None)
         return {"message": f"{svc.label} 已停止"}
 
     def start_all(self, delay_seconds: float = 1.0) -> None:
@@ -182,10 +186,14 @@ class ServiceManager:
         return open(svc.log_path, "a", encoding="utf-8")
 
     def _cleanup_finished(self, name: str) -> None:
-        """清理已结束进程在内部进程表中的残留引用。"""
-        proc = self._processes.pop(name, None)
-        if proc is not None and proc.poll() is None:
-            try:
-                proc.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+        """清理已结束进程在内部进程表中的残留引用。
+
+        仅当进程已退出时才移除；若仍在运行则保留不动。
+        """
+        proc = self._processes.get(name)
+        if proc is None:
+            return
+        if proc.poll() is not None:
+            # 进程已退出，安全移除
+            self._processes.pop(name, None)
+        # 若 poll() is None（仍在运行），不做任何操作

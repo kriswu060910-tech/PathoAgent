@@ -63,13 +63,17 @@ export const webSearchTool: Tool = createWebSearchTool()
 
 function resolveProvider(provider?: string, apiKey?: string): WebSearchConfig['provider'] {
   const value = provider || import.meta.env.VITE_SEARCH_PROVIDER
-  if (value === 'duckduckgo' || value === 'tavily' || value === 'serper' || value === 'mock') {
+  if (value === 'duckduckgo' || value === 'mock') {
+    return value
+  }
+  // tavily / serper 需要 API Key，没有则回退到 duckduckgo
+  if ((value === 'tavily' || value === 'serper') && apiKey) {
     return value
   }
   if (apiKey) return 'tavily'
   if (import.meta.env.DEV) return 'duckduckgo'
-  console.warn('[webSearch] 未配置搜索供应商，已回退到 mock 模式。')
-  return 'mock'
+  // 生产环境：有 Key 用 tavily，没有用 duckduckgo（走 CORS 代理）
+  return 'duckduckgo'
 }
 
 async function performSearch(
@@ -167,9 +171,8 @@ async function searchDuckDuckGo(query: string, maxResults: number): Promise<Sear
   }
 
   const res = await fetch(url, {
-    headers: {
-      Accept: 'text/html',
-    },
+    headers: { Accept: 'text/html' },
+    signal: AbortSignal.timeout(15_000),
   })
 
   if (!res.ok) {

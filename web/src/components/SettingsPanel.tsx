@@ -18,15 +18,19 @@ interface ValidationResult {
 
 async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
   const results: ValidationResult[] = []
+  const VALIDATION_TIMEOUT = 10_000
 
   // 验证 LLM API
   if (s.apiKey) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT)
     try {
       const baseURL = (s.baseURL || 'https://api.deepseek.com').replace(/\/$/, '')
       const res = await fetch(`${baseURL}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${s.apiKey}` },
         body: JSON.stringify({ model: s.model || 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+        signal: controller.signal,
       })
       if (res.ok || res.status === 200) {
         results.push({ name: 'LLM API', ok: true, message: '连接成功' })
@@ -36,7 +40,12 @@ async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
         results.push({ name: 'LLM API', ok: false, message: `请求失败 (${res.status})` })
       }
     } catch (err) {
-      results.push({ name: 'LLM API', ok: false, message: `无法连接: ${err instanceof Error ? err.message : '网络错误'}` })
+      const msg = err instanceof DOMException && err.name === 'AbortError'
+        ? `连接超时 (${VALIDATION_TIMEOUT / 1000}s)`
+        : `无法连接: ${err instanceof Error ? err.message : '网络错误'}`
+      results.push({ name: 'LLM API', ok: false, message: msg })
+    } finally {
+      clearTimeout(timer)
     }
   } else {
     results.push({ name: 'LLM API', ok: false, message: '未配置 API Key，Agent 将降级为简单聊天' })
@@ -44,21 +53,28 @@ async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
 
   // 验证视觉 API（仅当配置了时才验证）
   if (s.visionBaseUrl && s.visionApiKey) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT)
     try {
       const baseURL = s.visionBaseUrl.replace(/\/$/, '')
       const res = await fetch(`${baseURL}/models`, {
         headers: { 'Authorization': `Bearer ${s.visionApiKey}` },
+        signal: controller.signal,
       })
       if (res.ok) {
         results.push({ name: '视觉 API', ok: true, message: '连接成功' })
       } else if (res.status === 401 || res.status === 403) {
         results.push({ name: '视觉 API', ok: false, message: 'API Key 无效' })
       } else {
-        // 有些 API 不支持 /models 端点，但能连上就算成功
         results.push({ name: '视觉 API', ok: true, message: `已连接 (HTTP ${res.status})` })
       }
     } catch (err) {
-      results.push({ name: '视觉 API', ok: false, message: `无法连接: ${err instanceof Error ? err.message : '网络错误'}` })
+      const msg = err instanceof DOMException && err.name === 'AbortError'
+        ? `连接超时 (${VALIDATION_TIMEOUT / 1000}s)`
+        : `无法连接: ${err instanceof Error ? err.message : '网络错误'}`
+      results.push({ name: '视觉 API', ok: false, message: msg })
+    } finally {
+      clearTimeout(timer)
     }
   }
 

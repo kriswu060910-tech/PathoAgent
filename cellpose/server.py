@@ -17,6 +17,7 @@ API 端点：
 """
 
 import argparse
+import asyncio
 
 # 模型文件存到 D 盘，必须在 import cellpose 之前设置
 import os
@@ -130,7 +131,8 @@ async def segment(req: SegmentRequest):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     try:
-        img, mask = run_segmentation(
+        img, mask = await asyncio.to_thread(
+            run_segmentation,
             model,
             req.image,
             req.diameter,
@@ -156,7 +158,8 @@ async def measure(req: MeasureRequest):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     try:
-        img, mask = run_segmentation(
+        img, mask = await asyncio.to_thread(
+            run_segmentation,
             model,
             req.image,
             req.diameter,

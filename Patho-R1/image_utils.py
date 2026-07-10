@@ -12,12 +12,18 @@ from PIL import Image
 
 import config
 
+# base64 最大解码大小：20MB（防止恶意请求导致 OOM）
+MAX_IMAGE_BASE64_SIZE = 20 * 1024 * 1024
+
 
 def decode_base64_image(image_b64: str) -> Image.Image:
     """解码 base64 / data URL 为 PIL Image（RGB）。"""
     image_data = image_b64
     if image_data.startswith("data:"):
         image_data = image_data.split(",", 1)[1]
+
+    if len(image_data) > MAX_IMAGE_BASE64_SIZE:
+        raise ValueError(f"图片数据过大 ({len(image_data) / 1024 / 1024:.1f}MB)，上限 {MAX_IMAGE_BASE64_SIZE / 1024 / 1024:.0f}MB")
 
     img_bytes = base64.b64decode(image_data)
     return Image.open(io.BytesIO(img_bytes)).convert("RGB")

@@ -7,22 +7,35 @@ export const NO_IMAGE_MSG = '当前没有上传图片，请先上传图片再使
 export const PATHO_HINT = '请确保病理分析后端已启动：`python server.py`'
 export const CELLPOSE_HINT = '请确保 Cellpose 后端已启动：`cd cellpose && python server.py`'
 
-/** POST JSON 请求，统一处理错误响应 */
+/** POST JSON 请求，统一处理错误响应。默认 30 秒超时。 */
 export async function apiPost<T>(
   url: string,
   body: Record<string, unknown>,
   extraHeaders?: Record<string, string>,
+  timeoutMs = 30_000,
 ): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...extraHeaders },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`API error ${res.status}: ${text}`)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`API error ${res.status}: ${text}`)
+    }
+    return res.json() as Promise<T>
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(`请求超时 (${timeoutMs / 1000}s)：${url}`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
   }
-  return res.json() as Promise<T>
 }
 
 /** 安全解析 JSON 字符串为 Record<string, string> */

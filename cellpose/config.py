@@ -42,5 +42,5 @@ MAX_DISPLAY_CELLS = 50
 #  服务监听
 # ---------------------------------------------------------------------------
 
-DEFAULT_HOST = os.environ.get("CELLPOSE_HOST", "0.0.0.0")
+DEFAULT_HOST = os.environ.get("CELLPOSE_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("CELLPOSE_PORT", "8002"))

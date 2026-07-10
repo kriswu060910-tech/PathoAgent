@@ -1,5 +1,7 @@
 """Patho-R1 推理流水线：构建消息、调用模型、解析输出。"""
 
+import asyncio
+
 import torch
 from fastapi import HTTPException
 from qwen_vl_utils import process_vision_info
@@ -94,14 +96,17 @@ async def run_inference(
     question: str,
     style: str,
 ) -> AnalyzeResponse:
-    """完整的单图推理入口：解码 → 预处理 → 生成 → 解析。"""
+    """完整的单图推理入口：解码 → 预处理 → 生成 → 解析。
+
+    使用 asyncio.to_thread 将同步推理放到线程池，避免阻塞事件循环。
+    """
     try:
         img = decode_base64_image(image_b64)
         img = preprocess_image(img)
 
         with temp_image_file(img) as tmp_path:
             messages = build_messages(tmp_path, question, style)
-            raw_output = generate(model_manager, messages)
+            raw_output = await asyncio.to_thread(generate, model_manager, messages)
             thinking, answer = parse_output(raw_output)
 
         return AnalyzeResponse(
@@ -110,4 +115,4 @@ async def run_inference(
     except torch.cuda.OutOfMemoryError as exc:
         raise HTTPException(status_code=500, detail=f"GPU 显存不足: {exc}") from exc
     finally:
-        model_manager.cleanup_gpu()
+        await asyncio.to_thread(model_manager.cleanup_gpu)

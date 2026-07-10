@@ -6,11 +6,18 @@ import io
 import numpy as np
 from PIL import Image
 
+# base64 最大解码大小：20MB（防止恶意请求导致 OOM）
+MAX_IMAGE_BASE64_SIZE = 20 * 1024 * 1024
+
 
 def decode_image(image_b64: str) -> np.ndarray:
     """解码 base64 / data URL 为 RGB numpy 数组。"""
     if image_b64.startswith("data:"):
         image_b64 = image_b64.split(",", 1)[1]
+
+    if len(image_b64) > MAX_IMAGE_BASE64_SIZE:
+        raise ValueError(f"图片数据过大 ({len(image_b64) / 1024 / 1024:.1f}MB)，上限 {MAX_IMAGE_BASE64_SIZE / 1024 / 1024:.0f}MB")
+
     return np.array(
         Image.open(io.BytesIO(base64.b64decode(image_b64))).convert("RGB")
     )

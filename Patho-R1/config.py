@@ -54,5 +54,5 @@ REPORT_PROMPT = (
 #  服务监听
 # ---------------------------------------------------------------------------
 
-DEFAULT_HOST = os.environ.get("PATHO_HOST", "0.0.0.0")
+DEFAULT_HOST = os.environ.get("PATHO_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("PATHO_PORT", "8001"))
