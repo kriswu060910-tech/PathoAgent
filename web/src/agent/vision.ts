@@ -53,7 +53,7 @@ export async function analyzeImage(image: ImageAttachment, prompt?: string, cfg?
       },
     ],
     max_tokens: 1024,
-  }, { Authorization: `Bearer ${apiKey}` })
+  }, { Authorization: `Bearer ${apiKey}` }, 120_000)
 
   const content = data?.choices?.[0]?.message?.content
   if (!content) throw new Error('Unexpected response format')

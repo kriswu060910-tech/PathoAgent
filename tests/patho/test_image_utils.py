@@ -57,7 +57,7 @@ def test_decode_base64_image_rejects_too_many_pixels(monkeypatch):
 
 
 def test_decode_base64_image_rejects_decompression_bomb(monkeypatch):
-    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)
+    monkeypatch.setattr(shared_image_utils, "MAX_IMAGE_PIXELS", 10)
     img = Image.new("RGB", (10, 10), color="red")
     buf = BytesIO()
     img.save(buf, format="PNG")

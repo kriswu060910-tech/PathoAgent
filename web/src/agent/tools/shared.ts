@@ -7,6 +7,17 @@ export const NO_IMAGE_MSG = '当前没有上传图片，请先上传图片再使
 export const PATHO_HINT = '请确保病理分析后端已启动：`python server.py`'
 export const CELLPOSE_HINT = '请确保 Cellpose 后端已启动：`cd cellpose && python server.py`'
 
+let _serviceKey = ''
+export function setServiceKey(key: string) { _serviceKey = key }
+export function getServiceKey(): string { return _serviceKey }
+
+/** 判断 URL 是否为本地后端（localhost / 相对路径），仅对这些请求携带 SERVICE_API_KEY */
+function isLocalBackendUrl(url: string): boolean {
+  if (url.startsWith('/')) return true
+  if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return true
+  return false
+}
+
 /** 清洗 HTTP header 值，仅保留 RFC 7230 允许的可见 ASCII + 空格/制表符 */
 export function sanitizeHeaderValue(value: string): string {
   return value.replace(/[^\t\x20-\x7E]/g, '')
@@ -30,10 +41,12 @@ export async function apiPost<T>(
 ): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders }
+  if (_serviceKey && isLocalBackendUrl(url)) headers['Authorization'] = `Bearer ${_serviceKey}`
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: sanitizeHeaders({ 'Content-Type': 'application/json', ...extraHeaders }),
+      headers: sanitizeHeaders(headers),
       body: JSON.stringify(body),
       signal: controller.signal,
     })

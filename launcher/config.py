@@ -15,6 +15,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
+# .env 加载必须在读取环境变量之前
+from shared.dotenv import load_dotenv as _load_dotenv
+
+_load_dotenv(PROJECT_ROOT / ".env")
+
 # Python 解释器路径，可通过环境变量覆盖
 def _resolve_python() -> str:
     # 1. 环境变量（最高优先级）
@@ -97,15 +102,6 @@ def _resolve_service_key() -> str:
 
 
 SERVICE_API_KEY = _resolve_service_key()
-
-
-# ---------------------------------------------------------------------------
-#  .env 加载（从项目根目录读取，不覆盖已有环境变量）
-# ---------------------------------------------------------------------------
-
-from shared.dotenv import load_dotenv as _load_dotenv
-
-_load_dotenv(PROJECT_ROOT / ".env")
 
 # ---------------------------------------------------------------------------
 #  服务定义

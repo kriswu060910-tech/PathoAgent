@@ -28,8 +28,8 @@ VITE_SEARCH_MAX_RESULTS=5
 
 **DuckDuckGo 注意事项**：
 - 开发环境（`npm run dev`）已配置 Vite 代理，可直接使用。
-- 生产部署时浏览器有 CORS 限制，需要配置 `VITE_CORS_PROXY`（例如 `https://corsproxy.io/?`），或自行搭建后端代理。
-- 未配置搜索供应商时，开发环境默认使用 `duckduckgo`，生产环境回退到 `mock`。
+- 生产部署时默认使用 `allorigins.win` 作为 CORS 代理，可通过 `VITE_CORS_PROXY` 覆盖为其他代理地址。
+- 未配置搜索供应商且无 API Key 时，默认使用 `duckduckgo`（免费，无需配置）。
 
 ---
 

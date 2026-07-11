@@ -195,10 +195,10 @@ function loadSession(): { username: string; token: string | null; remote: boolea
   if (expiry && Date.now() > parseInt(expiry, 10)) {
     localStorage.removeItem(SESSION_KEY)
     localStorage.removeItem(SESSION_EXPIRY_KEY)
-    sessionStorage.removeItem(SESSION_TOKEN_KEY)
+    localStorage.removeItem(SESSION_TOKEN_KEY)
     return null
   }
-  const token = sessionStorage.getItem(SESSION_TOKEN_KEY)
+  const token = localStorage.getItem(SESSION_TOKEN_KEY)
   const remote = !!token
   const role = token ? parseRoleFromToken(token) : 'user'
   return { username, token, remote, role }
@@ -208,18 +208,17 @@ function saveSession(username: string, token: string | null, role: string = 'use
   localStorage.setItem(SESSION_KEY, username)
   localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_TTL_MS))
   if (token) {
-    sessionStorage.setItem(SESSION_TOKEN_KEY, token)
-    // role 以 token 中的 payload 为准，不单独持久化到 localStorage
+    localStorage.setItem(SESSION_TOKEN_KEY, token)
     void role
   } else {
-    sessionStorage.removeItem(SESSION_TOKEN_KEY)
+    localStorage.removeItem(SESSION_TOKEN_KEY)
   }
 }
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY)
   localStorage.removeItem(SESSION_EXPIRY_KEY)
-  sessionStorage.removeItem(SESSION_TOKEN_KEY)
+  localStorage.removeItem(SESSION_TOKEN_KEY)
 }
 
 // --- 初始化 ---
@@ -306,6 +305,9 @@ export async function register(username: string, password: string, displayName: 
   // 本地注册
   const users = loadLocalUsers()
   if (users[trimmedUser]) return { ok: false, error: '用户名已存在' }
+  if (adminKey) {
+    return { ok: false, error: '认证服务不可用，无法验证管理员密钥' }
+  }
   const salt = localGenerateSalt()
   const profile: LocalUser = {
     username: trimmedUser,
@@ -323,9 +325,6 @@ export async function register(username: string, password: string, displayName: 
   saveSession(trimmedUser, null)
   updateSettings(profile.settings)
   notify()
-  if (adminKey) {
-    return { ok: false, error: '认证服务不可用，无法验证管理员密钥' }
-  }
   return { ok: true }
 }
 

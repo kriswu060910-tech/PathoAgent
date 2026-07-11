@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSettings } from '../stores/settings'
+import { setServiceKey } from '../agent/tools/shared'
 
 interface ServiceInfo {
   label: string
@@ -72,7 +73,12 @@ export function useServices(enabled = true) {
       })
       if (controller?.signal.aborted) return
       if (res.ok) {
-        setServices(await res.json())
+        const data = await res.json()
+        if (data.service_api_key) {
+          setServiceKey(data.service_api_key)
+          delete data.service_api_key
+        }
+        setServices(data)
         setConnected(true)
       }
     } catch {
@@ -133,6 +139,10 @@ export function useServices(enabled = true) {
           if (controller.signal.aborted) break
           if (res.ok) {
             const data = await res.json()
+            if (data.service_api_key) {
+              setServiceKey(data.service_api_key)
+              delete data.service_api_key
+            }
             const s = data[name]
             if (running ? !s?.running : s?.healthy) {
               setServices(data)

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { Conversation, Message } from '../types/agent'
 import { agentService } from '../services/agent'
 import type { AgentServiceImpl } from '../services/agent'
@@ -20,6 +20,7 @@ export function useChat() {
   ])
   const [activeId, setActiveId] = useState(conversations[0].id)
   const [isLoading, setIsLoading] = useState(false)
+  const responseTargetRef = useRef<string>(activeId)
 
   const activeConversation =
     conversations.find((c) => c.id === activeId) ?? conversations[0]
@@ -62,15 +63,16 @@ export function useChat() {
 
   const updateActiveMessages = useCallback(
     (update: (messages: Message[]) => Message[]) => {
+      const targetId = responseTargetRef.current
       setConversations((prev) =>
         prev.map((c) =>
-          c.id === activeId
+          c.id === targetId
             ? { ...c, updatedAt: Date.now(), messages: update(c.messages) }
             : c,
         ),
       )
     },
-    [activeId],
+    [],
   )
 
   const patchMessage = useCallback(
@@ -100,6 +102,8 @@ export function useChat() {
       if ((!content.trim() && !images?.length) || isLoading) return
 
       const trimmed = content.trim()
+      const targetId = activeId
+      responseTargetRef.current = targetId
       const userMessage: Message = {
         id: generateId(),
         role: 'user',
@@ -119,7 +123,7 @@ export function useChat() {
 
       setConversations((prev) =>
         prev.map((c) => {
-          if (c.id !== activeId) return c
+          if (c.id !== targetId) return c
           return {
             ...c,
             title: c.title === '新对话' ? makeTitle(content) : c.title,
@@ -133,7 +137,7 @@ export function useChat() {
       try {
         // Agent 内部 memory 已维护完整上下文，无需传递历史消息
         const request = {
-          conversationId: activeId,
+          conversationId: targetId,
           content: trimmed,
           enableSearch,
           images,
@@ -148,7 +152,7 @@ export function useChat() {
           patchMessage(agentMsgId, { content: response.content })
         }
 
-        const annotations = agentService.getAnnotations?.(activeId)
+        const annotations = agentService.getAnnotations?.(targetId)
         patchMessage(agentMsgId, {
           status: 'done',
           annotations: annotations?.length ? annotations : undefined,

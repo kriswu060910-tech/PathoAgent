@@ -43,18 +43,23 @@ class RateLimiter:
 
 
 def client_ip(request) -> str:
-    """从请求对象中提取客户端 IP。"""
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """从请求对象中提取客户端 IP。
+
+    服务绑定 127.0.0.1，无受信反向代理，不读取 X-Forwarded-For（可被伪造）。
+    """
     return request.client.host if request.client else "unknown"
+
+
+def _login_key(req) -> str:
+    """提取限流键：仅基于 IP（请求体已被 Pydantic 消费，不可重复读取）。"""
+    return f"login:{client_ip(req)}"
 
 
 # 登录端点限流：每账号每 15 分钟最多 5 次失败
 _login_limiter = RateLimiter(
     max_requests=5,
     window_seconds=15 * 60,
-    key_func=lambda req: f"login:{client_ip(req)}:{(req.json() or {}).get('username', '')}",
+    key_func=_login_key,
 )
 
 

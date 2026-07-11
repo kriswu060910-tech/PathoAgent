@@ -14,7 +14,7 @@ import { apiPost } from './shared'
  * - 显式配置了供应商则优先使用
  * - 配置了 API Key 但未指定供应商时默认使用 tavily
  * - 开发环境未配置时默认使用免费的 duckduckgo（走 Vite 代理）
- * - 生产环境未配置时回退到 mock 模式
+ * - 没有 Key 时一律回退到 duckduckgo（免费，无需配置）
  */
 
 export interface SearchResult {
@@ -63,16 +63,13 @@ export const webSearchTool: Tool = createWebSearchTool()
 
 function resolveProvider(provider?: string, apiKey?: string): WebSearchConfig['provider'] {
   const value = provider || import.meta.env.VITE_SEARCH_PROVIDER
-  if (value === 'duckduckgo' || value === 'mock') {
-    return value
-  }
-  // tavily / serper 需要 API Key，没有则回退到 duckduckgo
-  if ((value === 'tavily' || value === 'serper') && apiKey) {
-    return value
-  }
+  // 显式指定免费供应商，直接使用
+  if (value === 'duckduckgo' || value === 'mock') return value
+  // 指定了付费供应商且有 Key，使用对应供应商
+  if ((value === 'tavily' || value === 'serper') && apiKey) return value
+  // 有 Key 但没指定供应商，默认 tavily
   if (apiKey) return 'tavily'
-  if (import.meta.env.DEV) return 'duckduckgo'
-  // 生产环境：有 Key 用 tavily，没有用 duckduckgo（走 CORS 代理）
+  // 没有 Key，一律回退到 duckduckgo（免费，无需配置）
   return 'duckduckgo'
 }
 
@@ -154,10 +151,10 @@ interface SerperResponse {
  *
  * 说明：
  * - 开发环境走 Vite 代理，可直接使用。
- * - 生产环境使用内置 CORS 代理（corsproxy.io），无需额外配置。
+ * - 生产环境使用内置 CORS 代理（allorigins.win），无需额外配置。
  * - 用户可通过 VITE_CORS_PROXY 覆盖默认代理地址。
  */
-const DEFAULT_CORS_PROXY = 'https://corsproxy.io/?'
+const DEFAULT_CORS_PROXY = 'https://api.allorigins.win/raw?url='
 
 async function searchDuckDuckGo(query: string, maxResults: number): Promise<SearchResult[]> {
   const target = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`

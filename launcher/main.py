@@ -18,10 +18,8 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-
-from shared.auth_middleware import require_service_token
 
 from . import config
 from .logger import setup_logger
@@ -56,12 +54,14 @@ app.add_middleware(
 _AUTO_START = False
 
 
-@app.get("/status", dependencies=[Depends(require_service_token)])
+@app.get("/status")
 async def status():
-    return await manager.status()
+    data = await manager.status()
+    data["service_api_key"] = config.SERVICE_API_KEY
+    return data
 
 
-@app.get("/logs/{name}", dependencies=[Depends(require_service_token)])
+@app.get("/logs/{name}")
 async def logs(name: str, lines: int = Query(default=50, ge=1, le=500)):
     try:
         return manager.read_logs(name, lines)
@@ -69,7 +69,7 @@ async def logs(name: str, lines: int = Query(default=50, ge=1, le=500)):
         raise HTTPException(404, str(exc)) from exc
 
 
-@app.post("/start/{name}", dependencies=[Depends(require_service_token)])
+@app.post("/start/{name}")
 async def start(name: str):
     try:
         return await manager.start(name, timeout_seconds=config.STARTUP_TIMEOUT_SECONDS)
@@ -77,7 +77,7 @@ async def start(name: str):
         raise HTTPException(404, str(exc)) from exc
 
 
-@app.post("/stop/{name}", dependencies=[Depends(require_service_token)])
+@app.post("/stop/{name}")
 async def stop(name: str):
     try:
         return await manager.stop(name)
@@ -87,7 +87,7 @@ async def stop(name: str):
 
 # --- 环境 Setup 端点 ---
 
-@app.get("/setup/environments", dependencies=[Depends(require_service_token)])
+@app.get("/setup/environments")
 async def setup_environments():
     import asyncio
     from .env_scanner import scan_environments, env_to_dict, get_all_deps_flat
@@ -99,7 +99,7 @@ async def setup_environments():
     }
 
 
-@app.post("/setup/select", dependencies=[Depends(require_service_token)])
+@app.post("/setup/select")
 async def setup_select(req: dict):
     import subprocess
 
@@ -130,7 +130,7 @@ async def setup_select(req: dict):
     return {"ok": True, "message": f"已保存 Python 路径: {python_path}"}
 
 
-@app.post("/setup/install", dependencies=[Depends(require_service_token)])
+@app.post("/setup/install")
 async def setup_install(req: dict):
     import asyncio
     import re

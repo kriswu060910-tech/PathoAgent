@@ -161,7 +161,7 @@ export class DeepSeekLLM implements LLM {
 
     return apiPost<DeepSeekResponse>(`${this.baseURL}/chat/completions`, body, {
       Authorization: `Bearer ${this.apiKey}`,
-    })
+    }, 120_000)
   }
 }
 
