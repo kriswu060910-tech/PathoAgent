@@ -12,7 +12,6 @@ MAX_IMAGE_BASE64_SIZE = 20 * 1024 * 1024
 
 # 图片最大像素数：20,000 x 20,000（PIL 解压缩炸弹防护）
 MAX_IMAGE_PIXELS = 20_000 * 20_000
-Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
 
 class ImageTooLargeError(ValueError):
@@ -57,7 +56,10 @@ def decode_base64_to_pil(image_b64: str) -> Image.Image:
     img_bytes = validate_and_decode_base64(raw)
 
     try:
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        # 使用局部 max_image_pixels，避免修改全局 PIL 设置
+        img = Image.open(io.BytesIO(img_bytes))
+        img.max_image_pixels = MAX_IMAGE_PIXELS
+        img = img.convert("RGB")
     except DecompressionBombError as exc:
         raise ImageTooLargeError(0, MAX_IMAGE_PIXELS, kind="pixels") from exc
     except Exception as exc:

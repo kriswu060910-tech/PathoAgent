@@ -61,11 +61,12 @@ export function createPathologyTools(getImages: GetImages, apiUrl?: string): Too
         const baseUrl = getApiUrl(apiUrl)
         const focus = args.focus || '病理特征差异'
 
-        return processImages(images, async (image, idx) => {
+        const results = await processImages(images, async (image, idx) => {
           const question = `请详细分析这张病理图像，重点关注${focus}方面的特征。`
           const { answer } = await callPathoAPI(baseUrl, image.dataUrl, question, 'cot')
           return `**图片 ${idx + 1} (${image.name})：**\n${answer}`
-        }, '分析') + `\n\n**对比总结：** 以上是对 ${images.length} 张病理图像在「${focus}」方面的分别分析，请根据各项特征进行对比判断。`
+        }, '分析')
+        return `${results}\n\n**对比总结：** 以上是对 ${images.length} 张病理图像在「${focus}」方面的分别分析，请根据各项特征进行对比判断。`
       },
     },
     {

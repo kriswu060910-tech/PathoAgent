@@ -30,7 +30,15 @@ def run_segmentation(
         flow_threshold=flow_threshold,
         cellprob_threshold=cellprob_threshold,
     )
-    return img, result[0][0]
+
+    # Cellpose 对列表输入返回 (list_of_masks, ...)；对单张输入返回 (mask, ...)。
+    # 这里统一处理，确保拿到 shape 为 (H, W) 的 numpy 掩膜。
+    masks = result[0]
+    if isinstance(masks, list):
+        masks = masks[0]
+    if not isinstance(masks, np.ndarray) or masks.ndim != 2:
+        raise ValueError(f"Cellpose 返回 unexpected mask shape: {getattr(masks, 'shape', type(masks))}")
+    return img, masks
 
 
 # ---------------------------------------------------------------------------

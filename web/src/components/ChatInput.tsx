@@ -9,11 +9,57 @@ interface ChatInputProps {
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
 const COMPRESS_THRESHOLD = 2 * 1024 * 1024 // 2MB 以上触发压缩
+const MAX_TOTAL_IMAGE_SIZE = 20 * 1024 * 1024 // 20MB
+const MAX_IMAGE_COUNT = 5
+const MAX_IMAGE_PIXELS = 4096 * 4096 // 约 1600 万像素
 
-function compressImage(dataUrl: string, maxWidth = 1920, quality = 0.85): Promise<string> {
+function validateImageMagicBytes(file: File): Promise<boolean> {
   return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const arr = new Uint8Array(reader.result as ArrayBuffer)
+      if (arr.length < 4) return resolve(false)
+      const png = arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4E && arr[3] === 0x47
+      const jpeg = arr[0] === 0xFF && arr[1] === 0xD8 && arr[2] === 0xFF
+      const gif = arr[0] === 0x47 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x38
+      const bmp = arr[0] === 0x42 && arr[1] === 0x4D
+      let webp = false
+      if (arr.length >= 12) {
+        webp = arr[0] === 0x52 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x46 &&
+               arr[8] === 0x57 && arr[9] === 0x45 && arr[10] === 0x42 && arr[11] === 0x50
+      }
+      resolve(png || jpeg || webp || gif || bmp)
+    }
+    reader.onerror = () => resolve(false)
+    reader.readAsArrayBuffer(file.slice(0, 12))
+  })
+}
+
+function checkImageDimensions(dataUrl: string): Promise<void> {
+  return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
+      const pixels = img.width * img.height
+      if (pixels > MAX_IMAGE_PIXELS) {
+        reject(new Error(`图片像素过大 (${img.width}x${img.height})，超过安全限制`))
+        return
+      }
+      resolve()
+    }
+    img.onerror = () => reject(new Error('无法加载图片'))
+    img.src = dataUrl
+  })
+}
+
+function compressImage(dataUrl: string, maxWidth = 1920, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const pixels = img.width * img.height
+      if (pixels > MAX_IMAGE_PIXELS) {
+        reject(new Error(`图片像素过大 (${img.width}x${img.height})，超过安全限制`))
+        return
+      }
       const scale = Math.min(1, maxWidth / Math.max(img.width, img.height))
       const w = Math.round(img.width * scale)
       const h = Math.round(img.height * scale)
@@ -23,7 +69,7 @@ function compressImage(dataUrl: string, maxWidth = 1920, quality = 0.85): Promis
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
       resolve(canvas.toDataURL('image/jpeg', quality))
     }
-    img.onerror = () => resolve(dataUrl)
+    img.onerror = () => reject(new Error('无法加载图片'))
     img.src = dataUrl
   })
 }
@@ -33,9 +79,21 @@ async function processImage(file: File, onError?: (msg: string) => void): Promis
     onError?.(`图片 "${file.name}" 超过 10MB 限制，请压缩后重试。`)
     return null
   }
-  let dataUrl = await fileToDataUrl(file)
-  if (file.size > COMPRESS_THRESHOLD) {
-    dataUrl = await compressImage(dataUrl)
+  const valid = await validateImageMagicBytes(file)
+  if (!valid) {
+    onError?.(`文件 "${file.name}" 不是支持的图片格式。`)
+    return null
+  }
+  let dataUrl: string
+  try {
+    dataUrl = await fileToDataUrl(file)
+    await checkImageDimensions(dataUrl)
+    if (file.size > COMPRESS_THRESHOLD) {
+      dataUrl = await compressImage(dataUrl)
+    }
+  } catch (err) {
+    onError?.(err instanceof Error ? err.message : `图片 "${file.name}" 处理失败`)
+    return null
   }
   return { dataUrl, name: file.name, type: 'image' }
 }
@@ -77,7 +135,19 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    const imageFiles = files.filter((f) => f.type.startsWith('image/'))
+    const remainingSlots = MAX_IMAGE_COUNT - images.length
+    if (remainingSlots <= 0) {
+      setFileError(`最多上传 ${MAX_IMAGE_COUNT} 张图片`)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+    const imageFiles = files.filter((f) => f.type.startsWith('image/')).slice(0, remainingSlots)
+    const totalSize = imageFiles.reduce((sum, f) => sum + f.size, 0)
+    if (totalSize > MAX_TOTAL_IMAGE_SIZE) {
+      setFileError(`图片总大小超过 ${MAX_TOTAL_IMAGE_SIZE / 1024 / 1024}MB 限制`)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
     const results = await Promise.all(imageFiles.map((f) => processImage(f, (msg) => setFileError(msg))))
     const newImages = results.filter((r): r is NonNullable<typeof r> => r !== null)
     setImages((prev) => [...prev, ...newImages])

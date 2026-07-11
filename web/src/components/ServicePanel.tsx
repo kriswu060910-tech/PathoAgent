@@ -3,6 +3,70 @@ import { useServices, getLauncherUrl, type PythonEnvInfo } from '../hooks/useSer
 import { getSettings } from '../stores/settings'
 import { startLauncher, diagnoseLauncher, type LauncherDiagnosis } from '../utils/tauri'
 
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    if (signal.aborted) {
+      onAbort()
+      return
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+interface LauncherPollResult {
+  ok: boolean
+  aborted: boolean
+}
+
+function useLauncherStatusPoll() {
+  const controllerRef = useRef<AbortController | null>(null)
+
+  const cancel = useCallback(() => {
+    controllerRef.current?.abort()
+  }, [])
+
+  const poll = useCallback(async (onConnected: () => void | Promise<void>): Promise<LauncherPollResult> => {
+    cancel()
+    const controller = new AbortController()
+    controllerRef.current = controller
+    try {
+      for (let i = 0; i < 30; i++) {
+        try {
+          await sleep(1000, controller.signal)
+        } catch {
+          return { ok: false, aborted: true }
+        }
+        try {
+          const res = await fetch(`${getLauncherUrl()}/status`, {
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)]),
+          })
+          if (res.ok) {
+            await onConnected()
+            return { ok: true, aborted: false }
+          }
+        } catch { /* 还没就绪，继续等 */ }
+      }
+      return { ok: false, aborted: false }
+    } finally {
+      if (controllerRef.current === controller) {
+        controllerRef.current = null
+      }
+    }
+  }, [cancel])
+
+  useEffect(() => () => cancel(), [cancel])
+
+  return { poll, cancel }
+}
+
 function statusColor(connected: boolean, s: { healthy: boolean; crashed?: boolean; running: boolean }): string {
   if (!connected) return '#6b7280'
   if (s.healthy) return '#4ade80'
@@ -38,8 +102,8 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   const [envInstalling, setEnvInstalling] = useState<string | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(null)
-  const launcherPollCancel = useRef(false)
   const autoStartAttempted = useRef(false)
+  const { poll: pollLauncher, cancel: cancelLauncherPoll } = useLauncherStatusPoll()
   const names = Object.keys(services)
 
   const runningCount = names.filter((n) => services[n].running).length
@@ -55,9 +119,9 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current)
-      launcherPollCancel.current = true
+      cancelLauncherPoll()
     }
-  }, [])
+  }, [cancelLauncherPoll])
 
   useEffect(() => {
     if (!open) return
@@ -108,7 +172,6 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   }
 
   const handleStartLauncher = async () => {
-    launcherPollCancel.current = false
     setStartingLauncher(true)
     setDiagnosis(null)
     try {
@@ -116,19 +179,12 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
       const result = await startLauncher()
       if (result.ok) {
         showToast(result.message, 'success')
-        for (let i = 0; i < 30; i++) {
-          await new Promise((r) => setTimeout(r, 1000))
-          if (launcherPollCancel.current) return
-          try {
-            const res = await fetch(`${getLauncherUrl()}/status`, { signal: AbortSignal.timeout(2000) })
-            if (res.ok) {
-              await refresh()
-              showToast('Launcher 已连接', 'success')
-              return
-            }
-          } catch { /* 还没就绪，继续等 */ }
-        }
-        if (!launcherPollCancel.current) {
+        const { ok, aborted } = await pollLauncher(async () => {
+          await refresh()
+          showToast('Launcher 已连接', 'success')
+        })
+        if (aborted) return
+        if (!ok) {
           showToast('Launcher 启动超时，点击"诊断"查看详情', 'error')
           handleDiagnose()
         }
@@ -137,9 +193,7 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
         handleDiagnose()
       }
     } finally {
-      if (!launcherPollCancel.current) {
-        setStartingLauncher(false)
-      }
+      setStartingLauncher(false)
     }
   }
 
@@ -153,37 +207,25 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
       try {
         const result = await startLauncher()
         if (result.ok) {
-          for (let i = 0; i < 30; i++) {
-            await new Promise((r) => setTimeout(r, 1000))
-            if (launcherPollCancel.current) return
-            try {
-              const res = await fetch(`${getLauncherUrl()}/status`, { signal: AbortSignal.timeout(2000) })
-              if (res.ok) {
-                await refresh()
-                showToast('Launcher 已自动启动', 'success')
-                return
-              }
-            } catch { /* 等待就绪 */ }
-          }
-          if (!launcherPollCancel.current) {
+          const { ok, aborted } = await pollLauncher(async () => {
+            await refresh()
+            showToast('Launcher 已自动启动', 'success')
+          })
+          if (aborted) return
+          if (!ok) {
             showToast('Launcher 自动启动超时，请手动启动', 'error')
           }
         }
       } catch (err) {
-        if (!launcherPollCancel.current) {
-          showToast(`Launcher 自动启动失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
-        }
+        showToast(`Launcher 自动启动失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
       } finally {
-        if (!launcherPollCancel.current) {
-          setStartingLauncher(false)
-        }
+        setStartingLauncher(false)
       }
     }
 
     const timer = setTimeout(autoStart, 1500)
     return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, total])
+  }, [connected, total, pollLauncher, refresh, showToast])
 
   if (!total) return null
 

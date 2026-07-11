@@ -18,6 +18,12 @@ API 端点：
 """
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import os
+import re
 
 # 启动自检：检查关键依赖
 _missing = []
@@ -33,11 +39,12 @@ if _missing:
     sys.exit(1)
 
 import argparse
-from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from shared.auth_middleware import require_service_token
 
 import config
 from image_utils import ImageTooLargeError
@@ -45,6 +52,30 @@ from inference import run_inference
 from logger import setup_logger
 from model import ModelManager
 from schemas import AnalyzeRequest, AnalyzeResponse, RegionRequest, ReportRequest
+
+_TAG_RE = re.compile(r"</?think>|</?answer>", re.IGNORECASE)
+
+_REPORT_PROMPTS = {
+    "standard": config.REPORT_PROMPT,
+    "brief": (
+        "Based on this pathology image, provide a concise structured diagnostic report including:\n"
+        "1. **Diagnostic Conclusion**\n"
+        "2. **Key Findings**\n"
+        "3. **Clinical Recommendations**"
+    ),
+    "detailed": (
+        "Based on this pathology image, generate a comprehensive structured diagnostic report with the following sections:\n"
+        "1. **Diagnostic Conclusion**: Most likely pathological diagnosis with confidence level\n"
+        "2. **Key Findings**: Detailed morphological features supporting the diagnosis (at least 5 points)\n"
+        "3. **Grading/Staging**: If applicable (e.g., Gleason score, WHO grade, TNM staging)\n"
+        "4. **Differential Diagnosis**: Other possibilities with distinguishing features\n"
+        "5. **Clinical Recommendations**: Further tests, follow-up suggestions, and prognosis"
+    ),
+}
+
+
+def _sanitize_input(text: str) -> str:
+    return _TAG_RE.sub("", text)
 
 logger = setup_logger("patho", config.PROJECT_ROOT / "logs")
 
@@ -60,13 +91,18 @@ model_manager = ModelManager()
 
 app = FastAPI(title="Patho-R1 API", version="1.0.0")
 
+_CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://localhost:4173,tauri://localhost",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "tauri://localhost",
-    ],
+    allow_origins=_CORS_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
@@ -112,7 +148,7 @@ async def health():
     return info
 
 
-@app.post("/analyze", response_model=AnalyzeResponse)
+@app.post("/analyze", response_model=AnalyzeResponse, dependencies=[Depends(require_service_token)])
 async def analyze(req: AnalyzeRequest):
     if not model_manager.is_loaded():
         raise HTTPException(status_code=503, detail="Model not loaded")
@@ -121,32 +157,38 @@ async def analyze(req: AnalyzeRequest):
     )
 
 
-@app.post("/report", response_model=AnalyzeResponse)
+@app.post("/report", response_model=AnalyzeResponse, dependencies=[Depends(require_service_token)])
 async def report(req: ReportRequest):
     if not model_manager.is_loaded():
         raise HTTPException(status_code=503, detail="Model not loaded")
 
+    prompt = _REPORT_PROMPTS.get(req.template, config.REPORT_PROMPT)
     clinical_suffix = (
         f"\nClinical information: {req.clinical_info}"
         if req.clinical_info
         else ""
     )
-    question = config.REPORT_PROMPT + clinical_suffix
+    question = prompt + clinical_suffix
     return await run_inference(model_manager, req.image, question, "cot")
 
 
-@app.post("/region", response_model=AnalyzeResponse)
+@app.post("/region", response_model=AnalyzeResponse, dependencies=[Depends(require_service_token)])
 async def region(req: RegionRequest):
     if not model_manager.is_loaded():
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    if req.question:
+    if len(req.region) > 1000 or len(req.question) > 1000:
+        raise HTTPException(status_code=400, detail="请求参数过长")
+
+    region = _sanitize_input(req.region)
+    question_text = _sanitize_input(req.question)
+    if question_text:
         question = (
-            f"Focus on the region described as '{req.region}' and answer: {req.question}"
+            f"Focus on the region described as '{region}' and answer: {question_text}"
         )
     else:
         question = (
-            f"Focus on the region described as '{req.region}'. "
+            f"Focus on the region described as '{region}'. "
             "Describe in detail the cellular morphology, tissue architecture, "
             "staining characteristics, and any abnormal findings in this specific area."
         )

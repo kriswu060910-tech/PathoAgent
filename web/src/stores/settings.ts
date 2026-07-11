@@ -22,6 +22,9 @@ export interface AppSettings {
 
 const STORAGE_KEY = 'cookie-agent-settings'
 
+/** 敏感字段：不会持久化到 localStorage，仅保存在内存，页面刷新后需重新填写 */
+const SENSITIVE_FIELDS: (keyof AppSettings)[] = ['apiKey', 'visionApiKey', 'searchApiKey']
+
 const isDev = import.meta.env.DEV === true
 
 // 生产模式下后端服务需运行在本地，通过 Tauri 或反向代理访问
@@ -67,14 +70,28 @@ function loadSettings(): AppSettings {
         if (merged.authApiUrl === '/api/auth') { merged.authApiUrl = 'http://localhost:8100'; migrated = true }
       }
 
+      // 敏感字段不恢复，避免泄露
+      for (const key of SENSITIVE_FIELDS) {
+        merged[key] = DEFAULT_SETTINGS[key]
+      }
+
       // 迁移后写回 localStorage，避免每次加载重复迁移
       if (migrated) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stripSecrets(merged)))
       }
       return merged
     }
   } catch { /* ignore */ }
   return { ...DEFAULT_SETTINGS }
+}
+
+/** 去除敏感字段，用于持久化 */
+function stripSecrets(s: AppSettings): Partial<AppSettings> {
+  const clone = { ...s }
+  for (const key of SENSITIVE_FIELDS) {
+    delete (clone as Record<string, unknown>)[key]
+  }
+  return clone
 }
 
 let currentSettings = loadSettings()
@@ -95,7 +112,7 @@ export function onSettingsPersist(cb: (s: AppSettings) => void) {
 
 function saveSettings(s: AppSettings) {
   currentSettings = s
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stripSecrets(s)))
   persistCallbacks.forEach((cb) => cb(s))
   notify()
 }

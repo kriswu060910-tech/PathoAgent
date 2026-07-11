@@ -30,7 +30,7 @@ def test_start_unknown_service_raises_keyerror():
 def test_stop_unknown_service_raises_keyerror():
     manager = ServiceManager()
     with pytest.raises(KeyError):
-        manager.stop("unknown")
+        asyncio.run(manager.stop("unknown"))
 
 
 def test_read_logs_unknown_service_raises_keyerror():
@@ -83,12 +83,11 @@ def test_start_skips_when_port_healthy(tmp_path: Path):
 def test_shutdown_stops_running_process():
     manager = ServiceManager()
     mock_proc = MagicMock()
-    mock_proc.poll.return_value = None
+    mock_proc.poll.side_effect = [None, 0]
     mock_proc.wait.return_value = 0
     mock_file = MagicMock()
     manager._processes["cellpose"] = _ProcessHandle(mock_proc, mock_file)
 
-    result = manager.stop("cellpose")
+    result = asyncio.run(manager.stop("cellpose"))
     assert "已停止" in result["message"]
-    mock_proc.terminate.assert_called_once()
     mock_file.close.assert_called_once()

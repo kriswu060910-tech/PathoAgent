@@ -13,15 +13,15 @@ API 端点：
 
 import argparse
 import asyncio
-import hmac
 import os
-import signal
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+
+from shared.auth_middleware import require_service_token
 
 from . import config
 from .logger import setup_logger
@@ -30,7 +30,17 @@ from .service_manager import ServiceManager
 manager = ServiceManager()
 logger = setup_logger("launcher", config.LOG_DIR)
 
-app = FastAPI(title="Agent Launcher", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期事件：自动启动服务 + 优雅关闭。"""
+    if _AUTO_START:
+        asyncio.create_task(manager.start_all(delay_seconds=1.0))
+    yield
+    manager.shutdown()
+
+
+app = FastAPI(title="Agent Launcher", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -42,34 +52,16 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-# Launcher token 认证：通过环境变量 LAUNCHER_TOKEN 设置
-_LAUNCHER_TOKEN = os.environ.get("LAUNCHER_TOKEN", "")
-
-
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    if _LAUNCHER_TOKEN and request.url.path not in ("/health", "/docs", "/openapi.json"):
-        auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[7:], _LAUNCHER_TOKEN):
-            return JSONResponse(status_code=401, content={"detail": "未授权"})
-    return await call_next(request)
-
 
 _AUTO_START = False
 
 
-@app.on_event("startup")
-async def _auto_start_services():
-    if _AUTO_START:
-        asyncio.create_task(manager.start_all(delay_seconds=1.0))
-
-
-@app.get("/status")
+@app.get("/status", dependencies=[Depends(require_service_token)])
 async def status():
     return await manager.status()
 
 
-@app.get("/logs/{name}")
+@app.get("/logs/{name}", dependencies=[Depends(require_service_token)])
 async def logs(name: str, lines: int = Query(default=50, ge=1, le=500)):
     try:
         return manager.read_logs(name, lines)
@@ -77,7 +69,7 @@ async def logs(name: str, lines: int = Query(default=50, ge=1, le=500)):
         raise HTTPException(404, str(exc)) from exc
 
 
-@app.post("/start/{name}")
+@app.post("/start/{name}", dependencies=[Depends(require_service_token)])
 async def start(name: str):
     try:
         return await manager.start(name, timeout_seconds=config.STARTUP_TIMEOUT_SECONDS)
@@ -85,17 +77,17 @@ async def start(name: str):
         raise HTTPException(404, str(exc)) from exc
 
 
-@app.post("/stop/{name}")
+@app.post("/stop/{name}", dependencies=[Depends(require_service_token)])
 async def stop(name: str):
     try:
-        return manager.stop(name)
+        return await manager.stop(name)
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
 
 
 # --- 环境 Setup 端点 ---
 
-@app.get("/setup/environments")
+@app.get("/setup/environments", dependencies=[Depends(require_service_token)])
 async def setup_environments():
     import asyncio
     from .env_scanner import scan_environments, env_to_dict, get_all_deps_flat
@@ -107,20 +99,38 @@ async def setup_environments():
     }
 
 
-@app.post("/setup/select")
+@app.post("/setup/select", dependencies=[Depends(require_service_token)])
 async def setup_select(req: dict):
+    import subprocess
+
     python_path = req.get("pythonPath", "")
     if not python_path:
         raise HTTPException(400, "未指定 Python 路径")
     from pathlib import Path as _Path
     if not _Path(python_path).exists():
         raise HTTPException(400, f"Python 路径不存在: {python_path}")
+
+    # 验证是否为有效的 Python 解释器
+    try:
+        result = subprocess.run(
+            [python_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise HTTPException(400, f"无法执行 Python: {python_path}")
+    except (OSError, subprocess.TimeoutExpired):
+        raise HTTPException(400, f"无法执行 Python: {python_path}")
+
     config.save_python_path(python_path)
+    config.PYTHON = python_path
     logger.info(f"用户选择 Python 环境: {python_path}")
     return {"ok": True, "message": f"已保存 Python 路径: {python_path}"}
 
 
-@app.post("/setup/install")
+@app.post("/setup/install", dependencies=[Depends(require_service_token)])
 async def setup_install(req: dict):
     import asyncio
     import re
@@ -177,15 +187,6 @@ if __name__ == "__main__":
         f"Launcher 启动: host={config.DEFAULT_HOST}, port={config.DEFAULT_PORT}, "
         f"auto_start={args.auto_start}"
     )
-
-    def _signal_handler(signum, _frame):
-        sig_name = signal.Signals(signum).name
-        logger.info(f"收到信号 {sig_name}，正在优雅关闭...")
-        manager.shutdown()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
 
     import uvicorn
 

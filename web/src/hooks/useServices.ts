@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSettings } from '../stores/settings'
 
 interface ServiceInfo {
@@ -38,55 +38,99 @@ const DEFAULT_SERVICES: Services = {
   cellpose: { label: 'Cellpose 细胞分割', running: false, healthy: false, port: 8002 },
 }
 
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    if (signal.aborted) {
+      onAbort()
+      return
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 export function useServices(enabled = true) {
   const [services, setServices] = useState<Services>(DEFAULT_SERVICES)
   const [loading, setLoading] = useState('')
   const [connected, setConnected] = useState(false)
   const [setupInfo, setSetupInfo] = useState<SetupInfo | null>(null)
+  const toggleControllerRef = useRef<AbortController | null>(null)
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (controller?: AbortController) => {
     try {
-      const res = await fetch(`${getLauncherUrl()}/status`, { signal: AbortSignal.timeout(3000) })
+      const res = await fetch(`${getLauncherUrl()}/status`, {
+        signal: controller
+          ? AbortSignal.any([controller.signal, AbortSignal.timeout(3000)])
+          : AbortSignal.timeout(3000),
+      })
+      if (controller?.signal.aborted) return
       if (res.ok) {
         setServices(await res.json())
         setConnected(true)
       }
     } catch {
+      if (controller?.signal.aborted) return
       setConnected(false)
     }
   }, [])
 
   useEffect(() => {
     if (!enabled) return
-    fetchStatus()
-    let id: ReturnType<typeof setInterval>
+    const controller = new AbortController()
+    let intervalId = setInterval(() => fetchStatus(controller), 5000)
     const startPolling = () => {
-      clearInterval(id)
-      id = setInterval(fetchStatus, 5000)
+      clearInterval(intervalId)
+      intervalId = setInterval(() => fetchStatus(controller), 5000)
     }
-    const stopPolling = () => { clearInterval(id) }
+    const stopPolling = () => { clearInterval(intervalId) }
     const handler = () => {
       if (document.visibilityState === 'visible') startPolling()
       else stopPolling()
     }
+    fetchStatus(controller)
     startPolling()
     document.addEventListener('visibilitychange', handler)
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', handler) }
+    return () => {
+      controller.abort()
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handler)
+    }
   }, [fetchStatus, enabled])
 
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    return () => {
+      toggleControllerRef.current?.abort()
+    }
+  }, [])
+
   const toggle = useCallback(async (name: string, running: boolean) => {
+    toggleControllerRef.current?.abort()
+    const controller = new AbortController()
+    toggleControllerRef.current = controller
     setLoading(name)
     setError('')
     try {
       const action = running ? 'stop' : 'start'
-      await fetch(`${getLauncherUrl()}/${action}/${name}`, { method: 'POST' })
+      await fetch(`${getLauncherUrl()}/${action}/${name}`, { method: 'POST', signal: controller.signal })
       const maxWait = running ? 10 : 120
       for (let i = 0; i < maxWait; i++) {
-        await new Promise((r) => setTimeout(r, 1000))
         try {
-          const res = await fetch(`${getLauncherUrl()}/status`)
+          await sleep(1000, controller.signal)
+        } catch {
+          break
+        }
+        try {
+          const res = await fetch(`${getLauncherUrl()}/status`, { signal: controller.signal })
+          if (controller.signal.aborted) break
           if (res.ok) {
             const data = await res.json()
             const s = data[name]
@@ -99,9 +143,13 @@ export function useServices(enabled = true) {
         } catch { /* ignore */ }
       }
     } catch {
+      if (controller.signal.aborted) return
       setError(`${running ? '停止' : '启动'}服务失败，请检查 Launcher 是否运行`)
     } finally {
       setLoading('')
+      if (toggleControllerRef.current === controller) {
+        toggleControllerRef.current = null
+      }
     }
   }, [])
 

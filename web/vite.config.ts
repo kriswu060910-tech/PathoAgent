@@ -5,7 +5,23 @@ import { resolve } from 'path'
 import type { Plugin } from 'vite'
 
 const PROJECT_ROOT = resolve(__dirname, '..')
-const PYTHON = process.env.PYTHON_PATH || 'python'
+const DEFAULT_PYTHON = 'python'
+
+function resolvePython(): string {
+  const envPath = process.env.PYTHON_PATH
+  if (envPath) {
+    if (!envPath.endsWith('python') && !envPath.endsWith('python.exe')) {
+      throw new Error(`PYTHON_PATH 必须是 python 可执行文件: ${envPath}`)
+    }
+    if (!require('fs').existsSync(envPath)) {
+      throw new Error(`PYTHON_PATH 不存在: ${envPath}`)
+    }
+    return envPath
+  }
+  return DEFAULT_PYTHON
+}
+
+const PYTHON = resolvePython()
 
 function launcherPlugin(): Plugin {
   let proc: ChildProcess | null = null
@@ -66,7 +82,7 @@ function launcherPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, resolve(__dirname), '')
+  const env = loadEnv(mode, resolve(__dirname), 'VITE_')
   const visionTarget = env.VITE_VISION_PROXY_TARGET || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
   return {

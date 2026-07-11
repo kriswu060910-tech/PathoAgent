@@ -37,6 +37,14 @@ class ModelManager:
     def device(self) -> torch.device | None:
         return self._model.device if self._model else None
 
+    @property
+    def uses_accelerate(self) -> bool:
+        """是否使用 accelerate 的 device_map 自动调度。"""
+        if self._model is None:
+            return False
+        # device_map="auto" 会在模型上留下 hf_device_map
+        return hasattr(self._model, "hf_device_map") and bool(self._model.hf_device_map)
+
     def is_loaded(self) -> bool:
         return self._model is not None and self._processor is not None
 

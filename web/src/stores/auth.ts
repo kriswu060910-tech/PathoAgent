@@ -18,9 +18,18 @@ import { type AppSettings, DEFAULT_SETTINGS, updateSettings, updateSettingsInMem
 const SESSION_KEY = 'cookie-agent-session'
 const SESSION_TOKEN_KEY = 'cookie-agent-token'
 const SESSION_EXPIRY_KEY = 'cookie-agent-session-expiry'
-const SESSION_ROLE_KEY = 'cookie-agent-role'
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
 const LOCAL_USERS_KEY = 'cookie-agent-users'
+
+/** 从 JWT payload 中解析角色（仅用于前端展示，真实权限校验在后端） */
+function parseRoleFromToken(token: string): string {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.role || 'user'
+  } catch {
+    return 'user'
+  }
+}
 
 export interface UserProfile {
   username: string
@@ -96,7 +105,7 @@ async function remoteSaveSettings(token: string, settings: AppSettings) {
       body: JSON.stringify({ settings }),
     })
     if (res.status === 401) {
-      clearSession()
+      logout()
     } else if (!res.ok) {
       _lastSyncError = '设置同步到服务器失败'
     } else {
@@ -185,30 +194,32 @@ function loadSession(): { username: string; token: string | null; remote: boolea
   const expiry = localStorage.getItem(SESSION_EXPIRY_KEY)
   if (expiry && Date.now() > parseInt(expiry, 10)) {
     localStorage.removeItem(SESSION_KEY)
-    localStorage.removeItem(SESSION_TOKEN_KEY)
     localStorage.removeItem(SESSION_EXPIRY_KEY)
-    localStorage.removeItem(SESSION_ROLE_KEY)
+    sessionStorage.removeItem(SESSION_TOKEN_KEY)
     return null
   }
-  const token = localStorage.getItem(SESSION_TOKEN_KEY)
+  const token = sessionStorage.getItem(SESSION_TOKEN_KEY)
   const remote = !!token
-  const role = localStorage.getItem(SESSION_ROLE_KEY) || 'user'
+  const role = token ? parseRoleFromToken(token) : 'user'
   return { username, token, remote, role }
 }
 
 function saveSession(username: string, token: string | null, role: string = 'user') {
   localStorage.setItem(SESSION_KEY, username)
-  if (token) localStorage.setItem(SESSION_TOKEN_KEY, token)
-  else localStorage.removeItem(SESSION_TOKEN_KEY)
   localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_TTL_MS))
-  localStorage.setItem(SESSION_ROLE_KEY, role)
+  if (token) {
+    sessionStorage.setItem(SESSION_TOKEN_KEY, token)
+    // role 以 token 中的 payload 为准，不单独持久化到 localStorage
+    void role
+  } else {
+    sessionStorage.removeItem(SESSION_TOKEN_KEY)
+  }
 }
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY)
-  localStorage.removeItem(SESSION_TOKEN_KEY)
   localStorage.removeItem(SESSION_EXPIRY_KEY)
-  localStorage.removeItem(SESSION_ROLE_KEY)
+  sessionStorage.removeItem(SESSION_TOKEN_KEY)
 }
 
 // --- 初始化 ---
@@ -253,6 +264,7 @@ function init() {
       const user = users[session.username]
       if (user) {
         currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false, role: user.role || 'user' }
+        currentToken = null
         updateSettings(user.settings)
       }
     }
@@ -308,7 +320,7 @@ export async function register(username: string, password: string, displayName: 
   saveLocalUsers(users)
   currentUser = { username: profile.username, displayName: profile.displayName, settings: profile.settings, remote: false, role: 'user' }
   currentToken = null
-  saveSession(trimmedUser, null, 'user')
+  saveSession(trimmedUser, null)
   updateSettings(profile.settings)
   notify()
   if (adminKey) {
@@ -366,7 +378,7 @@ export async function login(username: string, password: string): Promise<{ ok: b
 
   currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false, role: user.role || 'user' }
   currentToken = null
-  saveSession(trimmedUser, null, user.role || 'user')
+  saveSession(trimmedUser, null)
   updateSettings(user.settings)
   notify()
   return { ok: true }

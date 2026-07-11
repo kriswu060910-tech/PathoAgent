@@ -61,7 +61,11 @@ def generate(model_manager: ModelManager, messages: list[dict]) -> str:
         padding=True,
         return_tensors="pt",
     )
-    inputs = inputs.to(model.device)
+
+    # 当使用 accelerate 的 device_map="auto" 时，模型会自动调度输入，
+    # 手动 .to(model.device) 在多 GPU 或特定 accelerate 版本下会异常。
+    if not model_manager.uses_accelerate and model.device is not None:
+        inputs = inputs.to(model.device)
 
     with torch.no_grad():
         generated_ids = model.generate(**inputs, max_new_tokens=config.MAX_NEW_TOKENS)
@@ -112,7 +116,10 @@ async def run_inference(
 
             with temp_image_file(img) as tmp_path:
                 messages = build_messages(tmp_path, question, style)
-                raw_output = await asyncio.to_thread(generate, model_manager, messages)
+                raw_output = await asyncio.wait_for(
+                    asyncio.to_thread(generate, model_manager, messages),
+                    timeout=config.INFERENCE_TIMEOUT_SECONDS,
+                )
                 thinking, answer = parse_output(raw_output)
 
             return AnalyzeResponse(

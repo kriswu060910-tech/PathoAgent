@@ -10,6 +10,7 @@
 
 import hmac
 import json
+import os
 import sqlite3
 import time
 
@@ -17,19 +18,26 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shared.security import check_login_rate
+
 from . import config, database
 from .auth_logic import create_token, generate_salt, hash_password, verify_password, verify_token
 
 database.init_db()
 
+_cors_origins = os.environ.get(
+    "AUTH_CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:4173,tauri://localhost",
+)
+_allow_origins = [origin.strip() for origin in _cors_origins.split(",") if origin.strip()]
+
 app = FastAPI(title="PathoAgent Auth", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "tauri://localhost",
-    ],
+    allow_origins=_allow_origins,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
@@ -126,8 +134,11 @@ def register(req: RegisterRequest):
 
 
 @app.post("/auth/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
     username = req.username.strip().lower()
+    if not check_login_rate(request):
+        raise HTTPException(429, "登录尝试过于频繁，请 15 分钟后再试")
+
     user = database.find_user(username)
     if not user:
         raise HTTPException(401, "用户名或密码错误")
@@ -198,6 +209,13 @@ def admin_update_role(user_id: int, req: dict, _admin: dict = Depends(require_ad
     role = req.get("role")
     if role not in ("user", "admin"):
         raise HTTPException(400, "无效角色")
+
+    # 不能降级最后一个管理员
+    if role == "user":
+        admins = [u for u in database.list_users() if u.get("role") == "admin"]
+        if len(admins) <= 1 and any(u["id"] == user_id for u in admins):
+            raise HTTPException(400, "不能移除最后一个管理员")
+
     if not database.update_user_role(user_id, role):
         raise HTTPException(404, "用户不存在")
     return {"ok": True}
@@ -269,6 +287,14 @@ def admin_batch_disable(req: BatchRequest, admin: dict = Depends(require_admin))
         raise HTTPException(400, "未选择用户")
     if admin["id"] in req.ids:
         raise HTTPException(400, "不能禁用自己的账号")
+
+    # 不能禁用所有管理员
+    users = database.list_users()
+    admins = [u for u in users if u.get("role") == "admin"]
+    target_admins = [u for u in admins if u["id"] in req.ids]
+    if len(admins) - len(target_admins) < 1:
+        raise HTTPException(400, "不能禁用所有管理员")
+
     count = database.batch_update_enabled(req.ids, False)
     return {"ok": True, "updated": count}
 

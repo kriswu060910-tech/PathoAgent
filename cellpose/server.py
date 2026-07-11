@@ -17,6 +17,9 @@ API 端点：
 """
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # 启动自检：检查关键依赖
 _missing = []
@@ -43,10 +46,13 @@ os.environ.setdefault(
 )
 
 import torch
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from shared.auth_middleware import require_service_token
+from shared_image_utils import ImageTooLargeError
 
 from analysis import (
     build_summary,
@@ -85,16 +91,27 @@ def load_model(model_type: str):
 
 app = FastAPI(title="Cellpose API", version="1.0.0")
 
+_cors_origins = os.environ.get(
+    "CELLPOSE_CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:4173,tauri://localhost",
+)
+allow_origins = [origin.strip() for origin in _cors_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "tauri://localhost",
-    ],
+    allow_origins=allow_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+
+@app.exception_handler(ImageTooLargeError)
+async def image_too_large_handler(_request: Request, exc: ImageTooLargeError):
+    logger.warning(f"图片过大: {exc.size / 1024 / 1024:.1f}MB")
+    return JSONResponse(
+        status_code=413,
+        content={"detail": str(exc)},
+    )
 
 
 @app.exception_handler(ValueError)
@@ -167,7 +184,7 @@ async def health():
     }
 
 
-@app.post("/segment", response_model=SegmentResponse)
+@app.post("/segment", response_model=SegmentResponse, dependencies=[Depends(require_service_token)])
 async def segment(req: SegmentRequest):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
@@ -196,7 +213,7 @@ async def segment(req: SegmentRequest):
         raise HTTPException(status_code=500, detail="细胞分割失败，请检查日志") from exc
 
 
-@app.post("/measure", response_model=MeasureResponse)
+@app.post("/measure", response_model=MeasureResponse, dependencies=[Depends(require_service_token)])
 async def measure(req: MeasureRequest):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")

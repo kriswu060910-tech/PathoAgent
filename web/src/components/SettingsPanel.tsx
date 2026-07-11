@@ -90,8 +90,10 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     setResults(null)
     try {
       const validationResults = await validateSettings(settings)
+      if (validationResults.every((r) => r.ok)) {
+        update(settings)
+      }
       setResults(validationResults)
-      update(settings)
     } catch {
       setResults([{ name: '验证', ok: false, message: '验证过程出错' }])
     } finally {
