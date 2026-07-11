@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useServices } from '../hooks/useServices'
+import { useServices, getLauncherUrl } from '../hooks/useServices'
 import { getSettings } from '../stores/settings'
 import { startLauncher, diagnoseLauncher, type LauncherDiagnosis } from '../utils/tauri'
 
@@ -117,7 +117,7 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
           await new Promise((r) => setTimeout(r, 1000))
           if (launcherPollCancel.current) return
           try {
-            const res = await fetch(`${getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || 'http://localhost:8099'}/status`, { signal: AbortSignal.timeout(2000) })
+            const res = await fetch(`${getLauncherUrl()}/status`, { signal: AbortSignal.timeout(2000) })
             if (res.ok) {
               await refresh()
               showToast('Launcher 已连接', 'success')
@@ -152,8 +152,9 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
         if (result.ok) {
           for (let i = 0; i < 30; i++) {
             await new Promise((r) => setTimeout(r, 1000))
+            if (launcherPollCancel.current) return
             try {
-              const res = await fetch(`${getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || 'http://localhost:8099'}/status`, { signal: AbortSignal.timeout(2000) })
+              const res = await fetch(`${getLauncherUrl()}/status`, { signal: AbortSignal.timeout(2000) })
               if (res.ok) {
                 await refresh()
                 showToast('Launcher 已自动启动', 'success')
@@ -161,12 +162,18 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
               }
             } catch { /* 等待就绪 */ }
           }
-          showToast('Launcher 自动启动超时，请手动启动', 'error')
+          if (!launcherPollCancel.current) {
+            showToast('Launcher 自动启动超时，请手动启动', 'error')
+          }
         }
       } catch (err) {
-        showToast(`Launcher 自动启动失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+        if (!launcherPollCancel.current) {
+          showToast(`Launcher 自动启动失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+        }
       } finally {
-        setStartingLauncher(false)
+        if (!launcherPollCancel.current) {
+          setStartingLauncher(false)
+        }
       }
     }
 

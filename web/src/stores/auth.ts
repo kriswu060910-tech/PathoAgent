@@ -314,6 +314,9 @@ export async function register(username: string, password: string, displayName: 
   saveSession(trimmedUser, null, 'user')
   updateSettings(profile.settings)
   notify()
+  if (adminKey) {
+    return { ok: true, warning: '认证服务不可用，本地模式无法注册管理员' }
+  }
   return { ok: true }
 }
 

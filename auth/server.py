@@ -96,7 +96,15 @@ def register(req: RegisterRequest):
         raise HTTPException(409, "用户名已存在")
 
     # 检查管理员密钥：使用 hmac.compare_digest 防止时序攻击
-    role = "admin" if config.ADMIN_KEY and hmac.compare_digest(req.adminKey, config.ADMIN_KEY) else "user"
+    # 编码为 bytes 以支持非 ASCII 字符（hmac.compare_digest 不支持非 ASCII str）
+    role = (
+        "admin"
+        if config.ADMIN_KEY
+        and hmac.compare_digest(
+            req.adminKey.encode("utf-8"), config.ADMIN_KEY.encode("utf-8")
+        )
+        else "user"
+    )
 
     salt = generate_salt()
     pw_hash = hash_password(req.password, salt)

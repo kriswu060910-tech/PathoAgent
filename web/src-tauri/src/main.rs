@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::fs::File;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 
@@ -201,7 +200,9 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
             .stderr(std::process::Stdio::inherit());
     } else {
         cmd.stdout(std::process::Stdio::null());
-        let err_file = File::create(log_dir.join("launcher-stderr.log"))
+        let err_file = std::fs::OpenOptions::new()
+            .create(true).append(true)
+            .open(log_dir.join("launcher-stderr.log"))
             .map_err(|e| format!("创建日志文件失败: {}", e))?;
         cmd.stderr(err_file);
     }
@@ -313,7 +314,10 @@ fn main() {
         ])
         .setup(|app| {
             let state = app.state::<LauncherState>();
-            if !state.project_root.is_empty() && !state.python_path.is_empty() {
+            if !state.project_root.is_empty()
+                && !state.python_path.is_empty()
+                && state.starting.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok()
+            {
                 if let Err(e) = spawn_launcher(&*state) {
                     let msg = format!("[Tauri] 自动启动 Launcher 失败: {}\n", e);
                     if let Ok(root) = std::fs::canonicalize(&state.project_root) {
@@ -328,6 +332,7 @@ fn main() {
                     }
                     eprintln!("{}", msg.trim_end());
                 }
+                state.starting.store(false, Ordering::SeqCst);
             }
             Ok(())
         })
