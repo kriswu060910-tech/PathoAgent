@@ -203,7 +203,9 @@ class ServiceManager:
         if env is not None:
             popen_kwargs["env"] = env
         if sys.platform == "win32":
-            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            popen_kwargs["creationflags"] = (
+                subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000  # CREATE_NO_WINDOW
+            )
 
         proc = subprocess.Popen(
             self._module_args(svc),
@@ -272,7 +274,9 @@ class ServiceManager:
             if env is not None:
                 popen_kwargs["env"] = env
             if sys.platform == "win32":
-                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                popen_kwargs["creationflags"] = (
+                    subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000  # CREATE_NO_WINDOW
+                )
             proc = subprocess.Popen(self._module_args(svc), **popen_kwargs)
             self._processes[name] = _ProcessHandle(proc, log_file)
             logger.info(f"启动 {svc.label} (pid={proc.pid})")
