@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useServices, getLauncherUrl } from '../hooks/useServices'
+import { useServices, getLauncherUrl, type PythonEnvInfo } from '../hooks/useServices'
 import { getSettings } from '../stores/settings'
 import { startLauncher, diagnoseLauncher, type LauncherDiagnosis } from '../utils/tauri'
 
@@ -22,7 +22,7 @@ interface ServicePanelProps {
 }
 
 export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
-  const { services, loading, connected, toggle, refresh, fetchLogs } = useServices()
+  const { services, loading, connected, toggle, refresh, fetchLogs, setupInfo, fetchSetup, selectEnv, installDeps } = useServices()
   const [open, setOpen] = useState(false)
   const [logName, setLogName] = useState<string | null>(null)
   const [logContent, setLogContent] = useState('')
@@ -33,6 +33,9 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   const [startingLauncher, setStartingLauncher] = useState(false)
   const [diagnosis, setDiagnosis] = useState<LauncherDiagnosis | null>(null)
   const [diagnosing, setDiagnosing] = useState(false)
+  const [envSectionOpen, setEnvSectionOpen] = useState(false)
+  const [envScanning, setEnvScanning] = useState(false)
+  const [envInstalling, setEnvInstalling] = useState<string | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(null)
   const launcherPollCancel = useRef(false)
@@ -340,6 +343,89 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
               </div>
             )
           })}
+
+          {/* Python 环境区域 */}
+          {connected && (
+            <div className="service-env-section">
+              <button
+                className="service-env-header"
+                onClick={() => {
+                  setEnvSectionOpen(!envSectionOpen)
+                  if (!envSectionOpen && !setupInfo) {
+                    setEnvScanning(true)
+                    fetchSetup().finally(() => setEnvScanning(false))
+                  }
+                }}
+              >
+                <span>🐍 Python 环境</span>
+                <span className="service-env-toggle">{envSectionOpen ? '▾' : '▸'}</span>
+              </button>
+              {envSectionOpen && (
+                <div className="service-env-body">
+                  {envScanning ? (
+                    <div className="service-env-scanning">扫描中...</div>
+                  ) : setupInfo ? (
+                    <>
+                      <div className="service-env-current">
+                        当前: <code>{setupInfo.current_python}</code>
+                      </div>
+                      {setupInfo.environments.map((env: PythonEnvInfo) => (
+                        <div key={env.path} className="service-env-row">
+                          <div className="service-env-row-info">
+                            <span className={`service-env-dot ${env.missing.length === 0 ? 'ok' : 'warn'}`} />
+                            <span className="service-env-name">
+                              {env.is_conda && <span className="service-env-conda">conda</span>}
+                              {env.env_name}
+                            </span>
+                            <span className="service-env-ver">py{env.version}</span>
+                            {env.has_cuda && <span className="service-env-cuda">CUDA</span>}
+                          </div>
+                          <div className="service-env-row-actions">
+                            {env.missing.length > 0 ? (
+                              <button
+                                className="service-action-btn install"
+                                disabled={envInstalling === env.path}
+                                onClick={async () => {
+                                  setEnvInstalling(env.path)
+                                  const result = await installDeps(env.path, env.missing)
+                                  setEnvInstalling(null)
+                                  showToast(result.ok ? '依赖安装完成' : `安装失败: ${result.output}`, result.ok ? 'success' : 'error')
+                                }}
+                              >
+                                {envInstalling === env.path ? '安装中...' : `安装 ${env.missing.length} 缺失`}
+                              </button>
+                            ) : (
+                              <span className="service-env-ok">✓ 依赖完整</span>
+                            )}
+                            {env.path !== setupInfo.current_python && (
+                              <button
+                                className="service-action-btn select"
+                                onClick={async () => {
+                                  const result = await selectEnv(env.path)
+                                  showToast(result.message, result.ok ? 'success' : 'error')
+                                  if (result.ok) fetchSetup()
+                                }}
+                              >
+                                切换
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        className="service-action-btn rescan"
+                        onClick={() => { setEnvScanning(true); fetchSetup().finally(() => setEnvScanning(false)) }}
+                      >
+                        🔄 重新扫描
+                      </button>
+                    </>
+                  ) : (
+                    <div className="service-env-error">无法获取环境信息</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {logName && (
             <div className="service-log-viewer">

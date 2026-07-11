@@ -10,9 +10,21 @@ const PYTHON = process.env.PYTHON_PATH || 'python'
 function launcherPlugin(): Plugin {
   let proc: ChildProcess | null = null
 
-  function spawnLauncher() {
+  async function isLauncherAlive(): Promise<boolean> {
+    try {
+      const res = await fetch('http://localhost:8099/status', { signal: AbortSignal.timeout(2000) })
+      return res.ok
+    } catch { return false }
+  }
+
+  async function spawnLauncher() {
     if (proc && proc.exitCode === null) {
-      return { ok: true, message: `Launcher 已在运行 (pid=${proc.pid})` }
+      console.log(`[auto-launcher] Launcher 已在运行 (pid=${proc.pid})`)
+      return
+    }
+    if (await isLauncherAlive()) {
+      console.log('[auto-launcher] Launcher 已在端口 8099 运行，跳过启动')
+      return
     }
     proc = spawn(PYTHON, ['-u', '-m', 'launcher.main', '--auto-start'], {
       stdio: 'inherit',
@@ -23,18 +35,17 @@ function launcherPlugin(): Plugin {
       console.log(`[auto-launcher] launcher 退出 (code=${code})`)
       proc = null
     })
-    return { ok: true, message: `Launcher 已启动 (pid=${proc.pid})` }
   }
 
   return {
     name: 'auto-launcher',
     configureServer(server) {
       // 前端可通过 POST /api/launch 手动启动 Launcher
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
         if (req.url === '/api/launch' && req.method === 'POST') {
-          const result = spawnLauncher()
+          await spawnLauncher()
           res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(result))
+          res.end(JSON.stringify({ ok: true }))
           return
         }
         next()

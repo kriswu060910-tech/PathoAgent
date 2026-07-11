@@ -16,6 +16,21 @@ API 端点：
   GET  /health    健康检查
 """
 
+import sys
+
+# 启动自检：检查关键依赖
+_missing = []
+for _pkg, _import in [("fastapi", "fastapi"), ("uvicorn", "uvicorn"), ("torch", "torch"),
+                       ("cellpose", "cellpose"), ("opencv-python", "cv2"), ("numpy", "numpy")]:
+    try:
+        __import__(_import)
+    except ImportError:
+        _missing.append(_pkg)
+if _missing:
+    print(f"[Cellpose] 缺少依赖包: {', '.join(_missing)}")
+    print(f"[Cellpose] 请安装: {sys.executable} -m pip install {' '.join(_missing)}")
+    sys.exit(1)
+
 import argparse
 import asyncio
 import os

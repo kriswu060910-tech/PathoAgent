@@ -93,6 +93,70 @@ async def stop(name: str):
         raise HTTPException(404, str(exc)) from exc
 
 
+# --- 环境 Setup 端点 ---
+
+@app.get("/setup/environments")
+async def setup_environments():
+    import asyncio
+    from .env_scanner import scan_environments, env_to_dict, get_all_deps_flat
+    envs = await asyncio.to_thread(scan_environments)
+    return {
+        "environments": [env_to_dict(e) for e in envs],
+        "current_python": config.PYTHON,
+        "all_deps": get_all_deps_flat(),
+    }
+
+
+@app.post("/setup/select")
+async def setup_select(req: dict):
+    python_path = req.get("pythonPath", "")
+    if not python_path:
+        raise HTTPException(400, "未指定 Python 路径")
+    from pathlib import Path as _Path
+    if not _Path(python_path).exists():
+        raise HTTPException(400, f"Python 路径不存在: {python_path}")
+    config.save_python_path(python_path)
+    logger.info(f"用户选择 Python 环境: {python_path}")
+    return {"ok": True, "message": f"已保存 Python 路径: {python_path}"}
+
+
+@app.post("/setup/install")
+async def setup_install(req: dict):
+    import asyncio
+    import re
+    python_path = req.get("pythonPath", "")
+    packages = req.get("packages", [])
+    if not python_path:
+        raise HTTPException(400, "未指定 Python 路径")
+    from pathlib import Path as _Path
+    if not _Path(python_path).exists():
+        raise HTTPException(400, f"Python 路径不存在: {python_path}")
+    if not packages or not isinstance(packages, list):
+        raise HTTPException(400, "未指定要安装的包")
+    # 校验包名：只允许合法 pip 包名字符
+    for pkg in packages:
+        if not isinstance(pkg, str) or not re.match(r'^[a-zA-Z0-9_][a-zA-Z0-9._-]*$', pkg):
+            raise HTTPException(400, f"无效的包名: {pkg}")
+
+    from .env_scanner import install_packages
+
+    def _run_install():
+        proc = install_packages(python_path, packages)
+        output_lines: list[str] = []
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                output_lines.append(line)
+        proc.wait(timeout=300)
+        return {
+            "ok": proc.returncode == 0,
+            "output": "\n".join(output_lines[-50:]),
+            "exit_code": proc.returncode,
+        }
+
+    return await asyncio.to_thread(_run_install)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Agent Launcher")
     parser.add_argument(

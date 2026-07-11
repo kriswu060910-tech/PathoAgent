@@ -12,6 +12,23 @@ interface ServiceInfo {
 
 type Services = Record<string, ServiceInfo>
 
+export interface PythonEnvInfo {
+  path: string
+  version: string
+  is_conda: boolean
+  env_name: string
+  packages: Record<string, boolean>
+  missing: string[]
+  has_cuda: boolean
+  score: number
+}
+
+export interface SetupInfo {
+  environments: PythonEnvInfo[]
+  current_python: string
+  all_deps: Record<string, string>
+}
+
 export function getLauncherUrl(): string {
   return getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || 'http://localhost:8099'
 }
@@ -25,6 +42,7 @@ export function useServices(enabled = true) {
   const [services, setServices] = useState<Services>(DEFAULT_SERVICES)
   const [loading, setLoading] = useState('')
   const [connected, setConnected] = useState(false)
+  const [setupInfo, setSetupInfo] = useState<SetupInfo | null>(null)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -98,5 +116,45 @@ export function useServices(enabled = true) {
     return '无法获取日志'
   }, [])
 
-  return { services, loading, connected, error, toggle, refresh: fetchStatus, fetchLogs }
+  const fetchSetup = useCallback(async (): Promise<SetupInfo | null> => {
+    try {
+      const res = await fetch(`${getLauncherUrl()}/setup/environments`, { signal: AbortSignal.timeout(30000) })
+      if (res.ok) {
+        const data = await res.json()
+        setSetupInfo(data)
+        return data
+      }
+    } catch { /* ignore */ }
+    return null
+  }, [])
+
+  const selectEnv = useCallback(async (pythonPath: string): Promise<{ ok: boolean; message: string }> => {
+    try {
+      const res = await fetch(`${getLauncherUrl()}/setup/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pythonPath }),
+      })
+      const data = await res.json()
+      return { ok: res.ok, message: data.message || data.detail || '操作完成' }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  }, [])
+
+  const installDeps = useCallback(async (pythonPath: string, packages: string[]): Promise<{ ok: boolean; output: string }> => {
+    try {
+      const res = await fetch(`${getLauncherUrl()}/setup/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pythonPath, packages }),
+      })
+      const data = await res.json() as { ok?: boolean; output?: string; detail?: string }
+      return { ok: res.ok && data.ok !== false, output: data.output || data.detail || '' }
+    } catch (err) {
+      return { ok: false, output: err instanceof Error ? err.message : String(err) }
+    }
+  }, [])
+
+  return { services, loading, connected, error, toggle, refresh: fetchStatus, fetchLogs, setupInfo, fetchSetup, selectEnv, installDeps }
 }

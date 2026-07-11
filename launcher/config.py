@@ -15,8 +15,45 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
-# Python 解释器路径，可通过环境变量覆盖；未设置时使用当前运行时的解释器
-PYTHON = os.environ.get("PYTHON_PATH", sys.executable)
+# Python 解释器路径，可通过环境变量覆盖
+def _resolve_python() -> str:
+    # 1. 环境变量（最高优先级）
+    env = os.environ.get("PYTHON_PATH", "")
+    if env and Path(env).exists():
+        return env
+
+    # 2. 常见 conda 路径（快速 fallback，不触发扫描）
+    candidates = [
+        r"D:\miniconda3\envs\patho\python.exe",
+        r"D:\Anaconda3\envs\patho\python.exe",
+        r"C:\miniconda3\envs\patho\python.exe",
+        r"C:\ProgramData\miniconda3\envs\patho\python.exe",
+    ]
+    for p in candidates:
+        if Path(p).exists():
+            return p
+
+    # 3. 当前 Python
+    return sys.executable
+
+PYTHON = _resolve_python()
+
+
+def save_python_path(python_path: str) -> None:
+    """将选定的 Python 路径写入 .env 文件。"""
+    env_file = PROJECT_ROOT / ".env"
+    lines: list[str] = []
+    found = False
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("PYTHON_PATH="):
+                lines.append(f"PYTHON_PATH={python_path}")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"PYTHON_PATH={python_path}")
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

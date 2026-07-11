@@ -13,8 +13,9 @@
   min-width: 0;
   margin: 12px;
   margin-left: 0;
-  background: var(--bg-secondary);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(23, 23, 23, 0.95) 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.15);
 }

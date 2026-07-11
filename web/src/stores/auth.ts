@@ -269,7 +269,7 @@ export function subscribeAuth(cb: () => void) {
 export function getCurrentUser(): UserProfile | null { return currentUser }
 export function isLoggedIn(): boolean { return currentUser !== null }
 
-export async function register(username: string, password: string, displayName: string, adminKey?: string): Promise<{ ok: boolean; error?: string; warning?: string }> {
+export async function register(username: string, password: string, displayName: string, adminKey?: string): Promise<{ ok: boolean; error?: string }> {
   const trimmedUser = username.trim().toLowerCase()
   if (!trimmedUser) return { ok: false, error: '用户名不能为空' }
   if (trimmedUser.length < 2) return { ok: false, error: '用户名至少 2 个字符' }
@@ -283,9 +283,6 @@ export async function register(username: string, password: string, displayName: 
     saveSession(result.username, result.token, result.role)
     updateSettings(currentUser.settings)
     notify()
-    if (adminKey && result.role !== 'admin') {
-      return { ok: true, warning: '管理员密钥无效，已注册为普通用户' }
-    }
     return { ok: true }
   } catch (err) {
     if (err instanceof HttpError) {
@@ -315,7 +312,7 @@ export async function register(username: string, password: string, displayName: 
   updateSettings(profile.settings)
   notify()
   if (adminKey) {
-    return { ok: true, warning: '认证服务不可用，本地模式无法注册管理员' }
+    return { ok: false, error: '认证服务不可用，无法验证管理员密钥' }
   }
   return { ok: true }
 }

@@ -17,6 +17,21 @@ API 端点：
   GET  /health    健康检查
 """
 
+import sys
+
+# 启动自检：检查关键依赖
+_missing = []
+for _pkg, _import in [("fastapi", "fastapi"), ("uvicorn", "uvicorn"), ("torch", "torch"),
+                       ("transformers", "transformers"), ("bitsandbytes", "bitsandbytes")]:
+    try:
+        __import__(_import)
+    except ImportError:
+        _missing.append(_pkg)
+if _missing:
+    print(f"[Patho-R1] 缺少依赖包: {', '.join(_missing)}")
+    print(f"[Patho-R1] 请安装: {sys.executable} -m pip install {' '.join(_missing)}")
+    sys.exit(1)
+
 import argparse
 from pathlib import Path
 
@@ -86,11 +101,15 @@ async def generic_exception_handler(_request: Request, exc: Exception):
 
 @app.get("/health")
 async def health():
-    return {
+    import torch
+    info = {
         "status": "ok",
         "model_loaded": model_manager.is_loaded(),
         "device": str(model_manager.device) if model_manager.is_loaded() else None,
     }
+    if model_manager.is_loaded() and torch.cuda.is_available():
+        info["vram_gb"] = round(torch.cuda.memory_allocated() / 1024**3, 2)
+    return info
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
@@ -152,15 +171,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--host", default=config.DEFAULT_HOST, help="绑定地址"
     )
+    parser.add_argument(
+        "--quant", action=argparse.BooleanOptionalAction, default=True,
+        help="启用 4-bit NF4 量化（默认开启，--no-quant 关闭，显存 ~6GB）",
+    )
     args = parser.parse_args()
 
     model_name = config.MODEL_MAP.get(args.model, config.MODEL_MAP["7b"])
-    logger.info(f"Patho-R1 服务启动: host={args.host}, port={args.port}, model={args.model}")
+    quant_str = "4-bit" if args.quant else "fp16"
+    logger.info(f"Patho-R1 服务启动: host={args.host}, port={args.port}, model={args.model}, quant={quant_str}")
 
     if not Path(model_name).exists() and "/" not in model_name and "\\" not in model_name:
         logger.warning(f"模型路径/ID 看起来无效: {model_name}")
 
-    model_manager.load(args.model)
+    model_manager.load(args.model, quantize=args.quant)
 
     import uvicorn
 

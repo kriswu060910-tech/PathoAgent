@@ -71,3 +71,48 @@ export async function diagnoseLauncher(): Promise<LauncherDiagnosis | null> {
     return null
   }
 }
+
+// --- 环境检测 ---
+
+export type { PythonEnvInfo, SetupInfo } from '../hooks/useServices'
+import type { SetupInfo } from '../hooks/useServices'
+import { getSettings } from '../stores/settings'
+
+export async function detectEnvironments(): Promise<SetupInfo | null> {
+  if (isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      return await invoke<SetupInfo>('detect_environments')
+    } catch { /* fallback to HTTP */ }
+  }
+  try {
+    const baseUrl = getSettings().launcherApiUrl || 'http://localhost:8099'
+    const res = await fetch(`${baseUrl}/setup/environments`, { signal: AbortSignal.timeout(30000) })
+    if (res.ok) return await res.json()
+  } catch { /* ignore */ }
+  return null
+}
+
+export async function selectPythonEnv(pythonPath: string): Promise<{ ok: boolean; message: string }> {
+  if (isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const msg = await invoke<string>('select_python_env', { pythonPath })
+      return { ok: true, message: msg }
+    } catch (err) {
+      return { ok: false, message: String(err) }
+    }
+  }
+  try {
+    const baseUrl = getSettings().launcherApiUrl || 'http://localhost:8099'
+    const res = await fetch(`${baseUrl}/setup/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pythonPath }),
+    })
+    const data = await res.json()
+    return { ok: res.ok, message: data.message || data.detail || '' }
+  } catch (err) {
+    return { ok: false, message: String(err) }
+  }
+}

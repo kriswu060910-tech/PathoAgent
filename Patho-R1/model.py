@@ -48,33 +48,50 @@ class ModelManager:
     #  加载 / 卸载
     # ------------------------------------------------------------------
 
-    def load(self, model_key: str) -> None:
+    def load(self, model_key: str, quantize: bool = True) -> None:
         model_name = config.MODEL_MAP.get(model_key, config.MODEL_MAP["7b"])
-        logger.info(f"Loading model: {model_name} ...")
 
-        if torch.cuda.is_available():
+        use_cuda = torch.cuda.is_available()
+        use_quant = quantize and use_cuda
+
+        if use_quant:
             from transformers import BitsAndBytesConfig
 
             quant_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_compute_dtype=torch.bfloat16,
-                llm_int8_enable_fp32_cpu_offload=True,
+                bnb_4bit_use_double_quant=True,
             )
+            logger.info(f"Loading model (4-bit NF4): {model_name} ...")
             self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_name,
                 quantization_config=quant_config,
                 device_map="auto",
                 attn_implementation="sdpa",
             )
+        elif use_cuda:
+            logger.info(f"Loading model (fp16): {model_name} ...")
+            self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16,
+                device_map="auto",
+                attn_implementation="sdpa",
+            )
         else:
+            logger.info(f"Loading model (fp32 CPU): {model_name} ...")
             self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32,
                 device_map="cpu",
             )
         self._processor = AutoProcessor.from_pretrained(model_name)
-        logger.info(f"Model loaded successfully on {self.device}")
+
+        if use_cuda:
+            mem = torch.cuda.memory_allocated() / 1024**3
+            logger.info(f"Model loaded on {self.device}, VRAM: {mem:.2f} GB")
+        else:
+            logger.info(f"Model loaded on {self.device}")
 
     @staticmethod
     def cleanup_gpu() -> None:

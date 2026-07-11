@@ -246,8 +246,9 @@ huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct \\
 {`cd D:\\agent
 python Patho-R1/server.py --model qwen --port 8001
 
-# 指定模型路径（如不在默认位置）
-python Patho-R1/server.py --model qwen --model-path D:/hf_models/Qwen2.5-VL-3B-Instruct`}
+# 默认启用 4-bit NF4 量化（显存 ~2-3GB）
+# 关闭量化（需 ~6GB 显存，精度更高）：
+python Patho-R1/server.py --model qwen --port 8001 --no-quant`}
                   </pre>
 
                   <h5>验证</h5>
