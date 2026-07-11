@@ -109,6 +109,13 @@ export class ReactAgent {
         continue
       }
 
+      if (thought.action && isLastIteration) {
+        return this.finalize(
+          `我已尝试调用工具 ${thought.action.tool}，但已达到最大迭代次数。以下是我的推理过程：${thought.reasoning}`,
+          onEvent,
+        )
+      }
+
       break
     }
 

@@ -5,6 +5,7 @@ import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
 import { SplashScreen } from './components/SplashScreen'
 import { SettingsPanel } from './components/SettingsPanel'
+import { AdminPanel } from './components/AdminPanel'
 import { LoginPanel } from './components/LoginPanel'
 import { useChat } from './hooks/useChat'
 import { useAuth } from './hooks/useAuth'
@@ -13,6 +14,7 @@ import './App.css'
 /** 已认证用户的主界面，useChat 仅在此组件内执行 */
 function AuthenticatedApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [adminOpen, setAdminOpen] = useState(false)
   const {
     conversations,
     activeId,
@@ -33,6 +35,7 @@ function AuthenticatedApp() {
         onCreate={createNewConversation}
         onDelete={deleteConversation}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenAdmin={() => setAdminOpen(true)}
       />
       <main className="chat-container">
         <ChatHeader
@@ -44,6 +47,7 @@ function AuthenticatedApp() {
         <ChatInput onSend={sendMessage} disabled={isLoading} />
       </main>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
     </>
   )
 }

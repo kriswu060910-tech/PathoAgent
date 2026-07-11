@@ -37,12 +37,6 @@ fn resolve_project_root() -> String {
         }
     }
 
-    // 4. 已知开发路径 fallback
-    let fallback = r"D:\agent";
-    if std::path::Path::new(fallback).join("launcher").exists() {
-        return fallback.to_string();
-    }
-
     String::new()
 }
 
@@ -50,7 +44,19 @@ fn resolve_python_path() -> String {
     if let Ok(p) = std::env::var("PYTHON_PATH") {
         return p;
     }
-    r"D:\miniconda3\envs\patho\python.exe".to_string()
+    // 尝试从 PATH 中查找 python
+    if let Ok(output) = std::process::Command::new("where").arg("python").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout);
+            if let Some(first) = path.lines().next() {
+                let trimmed = first.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+    String::new()
 }
 
 #[tauri::command]
@@ -77,13 +83,28 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
         return Err("找不到项目目录。请设置 PATHO_AGENT_PROJECT 环境变量。".into());
     }
 
-    if !std::path::Path::new(python_path).exists() {
-        return Err(format!("Python 解释器不存在: {}", python_path));
+    if python_path.is_empty() {
+        return Err("找不到 Python 解释器。请设置 PYTHON_PATH 环境变量。".into());
     }
 
-    // 先检查 launcher 是否已在运行（TCP 探测 8099 端口）
+    // 规范化路径，防止路径注入
+    let canonical_root = std::fs::canonicalize(project_root)
+        .map_err(|e| format!("项目目录无效: {}", e))?;
+    let canonical_python = std::fs::canonicalize(python_path)
+        .map_err(|e| format!("Python 解释器路径无效: {}", e))?;
+
+    if !canonical_python.exists() {
+        return Err("Python 解释器不存在".into());
+    }
+
+    // 先检查 launcher 是否已在运行（TCP 探测端口）
+    let launcher_port: u16 = std::env::var("LAUNCHER_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8099);
+
     if std::net::TcpStream::connect_timeout(
-        &"127.0.0.1:8099".parse().unwrap(),
+        &format!("127.0.0.1:{}", launcher_port).parse().unwrap(),
         std::time::Duration::from_millis(500),
     )
     .is_ok()
@@ -91,14 +112,37 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
         return Ok("Launcher 已在运行中".into());
     }
 
-    let child = std::process::Command::new(python_path)
+    // 使用锁文件防止多实例竞态启动
+    let lock_path = canonical_root.join(".launcher_lock");
+    if lock_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&lock_path) {
+            if let Ok(pid) = content.trim().parse::<u32>() {
+                // 检查持有锁的进程是否仍存活
+                let alive = std::process::Command::new("tasklist")
+                    .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+                    .output()
+                    .map(|o| o.status.success() && !o.stdout.is_empty())
+                    .unwrap_or(false);
+                if alive {
+                    return Ok("另一个实例正在启动 Launcher，请稍候...".into());
+                }
+            }
+        }
+        // 锁文件过期或进程不存在，清理
+        let _ = std::fs::remove_file(&lock_path);
+    }
+
+    let child = std::process::Command::new(&canonical_python)
         .args(["-m", "launcher.main", "--auto-start"])
-        .current_dir(project_root)
+        .current_dir(&canonical_root)
         .creation_flags(0x00000008) // DETACHED_PROCESS
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("启动失败: {}", e))?;
+
+    // 写入锁文件（Launcher 启动后可自行清理，或下次启动时检测过期）
+    let _ = std::fs::write(&lock_path, child.id().to_string());
 
     Ok(format!("Launcher 已启动 (PID: {})", child.id()))
 }
@@ -106,9 +150,8 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
 #[tauri::command]
 fn get_launcher_info(state: tauri::State<'_, LauncherState>) -> serde_json::Value {
     serde_json::json!({
-        "projectRoot": state.project_root,
-        "pythonPath": state.python_path,
         "hasProject": !state.project_root.is_empty(),
+        "hasPython": !state.python_path.is_empty(),
     })
 }
 

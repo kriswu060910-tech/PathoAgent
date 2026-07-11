@@ -177,6 +177,18 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the get_launcher_info command",
+          "type": "string",
+          "const": "allow-get-launcher-info",
+          "markdownDescription": "Allows the get_launcher_info command"
+        },
+        {
+          "description": "Allows the start_launcher command",
+          "type": "string",
+          "const": "allow-start-launcher",
+          "markdownDescription": "Allows the start_launcher command"
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

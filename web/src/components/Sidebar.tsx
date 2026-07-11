@@ -1,7 +1,7 @@
 import type { Conversation } from '../types/agent'
 import { formatTime } from '../utils'
 import { useAuth } from '../hooks/useAuth'
-import { logout } from '../stores/auth'
+import { logout, isAdmin } from '../stores/auth'
 import sealIcon from '../assets/seal.png'
 
 interface SidebarProps {
@@ -11,6 +11,7 @@ interface SidebarProps {
   onCreate: () => void
   onDelete: (id: string) => void
   onOpenSettings: () => void
+  onOpenAdmin?: () => void
 }
 
 export function Sidebar({
@@ -20,8 +21,10 @@ export function Sidebar({
   onCreate,
   onDelete,
   onOpenSettings,
+  onOpenAdmin,
 }: SidebarProps) {
   const { user } = useAuth()
+  const admin = isAdmin()
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -68,14 +71,24 @@ export function Sidebar({
       <div className="sidebar-footer">
         <div className="sidebar-user-info">
           <span className="sidebar-user-avatar">{user?.displayName?.[0]?.toUpperCase() || '?'}</span>
-          <span className="sidebar-user-name">{user?.displayName || user?.username}</span>
+          <span className="sidebar-user-name">
+            {user?.displayName || user?.username}
+            {admin && <span className="sidebar-admin-badge">🛡</span>}
+          </span>
           <button type="button" className="sidebar-logout-btn" onClick={() => logout()} title="退出登录">
             ⎋
           </button>
         </div>
-        <button type="button" className="settings-trigger-btn" onClick={onOpenSettings}>
-          ⚙ 设置
-        </button>
+        <div className="sidebar-footer-buttons">
+          <button type="button" className="settings-trigger-btn" onClick={onOpenSettings}>
+            ⚙ 设置
+          </button>
+          {admin && onOpenAdmin && (
+            <button type="button" className="settings-trigger-btn admin-btn" onClick={onOpenAdmin}>
+              🛡 管理
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   )

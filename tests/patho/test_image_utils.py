@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 import image_utils
+import shared_image_utils
 
 
 def _make_png() -> bytes:
@@ -39,13 +40,13 @@ def test_decode_base64_image_rejects_invalid_b64():
 
 
 def test_decode_base64_image_rejects_oversized():
-    huge = "A" * (image_utils.MAX_IMAGE_BASE64_SIZE + 1)
+    huge = "A" * (shared_image_utils.MAX_IMAGE_BASE64_SIZE + 1)
     with pytest.raises(image_utils.ImageTooLargeError):
         image_utils.decode_base64_image(huge)
 
 
 def test_decode_base64_image_rejects_too_many_pixels(monkeypatch):
-    monkeypatch.setattr(image_utils, "MAX_IMAGE_PIXELS", 10)
+    monkeypatch.setattr(shared_image_utils, "MAX_IMAGE_PIXELS", 10)
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10_000 * 10_000)
     img = Image.new("RGB", (10, 10), color="red")
     buf = BytesIO()

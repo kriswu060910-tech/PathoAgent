@@ -5,13 +5,14 @@
 
 import atexit
 import asyncio
+import os
 import subprocess
 import sys
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import LOG_DIR, PYTHON, SERVICES
+from .config import LOG_DIR, PROJECT_ROOT, PYTHON, SERVICES
 from .logger import setup_logger
 
 logger = setup_logger("launcher", LOG_DIR)
@@ -103,18 +104,17 @@ class ServiceManager:
             return {"logs": "", "message": "暂无日志"}
 
         try:
-            tail = self._read_tail(log_path, lines)
-            total = self._count_lines(log_path)
+            tail, total = self._read_tail_with_count(log_path, lines)
             return {"logs": "\n".join(tail), "total_lines": total}
         except OSError as exc:
             logger.error(f"读取日志失败 {log_path}: {exc}")
             return {"logs": "", "message": f"读取日志失败: {exc}"}
 
     @staticmethod
-    def _read_tail(path: Path, n: int) -> list[str]:
-        """从文件末尾读取最近 n 行，避免大文件全量加载。"""
-        # 简单实现：按块从后往前读，直到收集够 n 行或到达开头
+    def _read_tail_with_count(path: Path, n: int) -> tuple[list[str], int]:
+        """从文件末尾读取最近 n 行，同时统计总行数，避免二次扫描。"""
         chunk_size = 8192
+        total_lines = 0
         with open(path, "rb") as f:
             f.seek(0, 2)
             size = f.tell()
@@ -128,29 +128,44 @@ class ServiceManager:
                 chunk = f.read(read_size)
                 buffer = chunk + buffer
                 parts = buffer.split(b"\n")
-                # 最后一段可能不完整，留到下一轮
                 buffer = parts.pop(0) if pos > 0 else b""
                 collected = parts + collected
-            # 去掉可能的空行并限制数量
+            # 统计总行数：已收集的行数 + 剩余前缀中的换行数
+            total_lines = len(collected)
+            if buffer:
+                total_lines += buffer.count(b"\n")
+            # 继续统计文件剩余前缀部分的行数
+            if pos > 0:
+                f.seek(0)
+                remaining = pos
+                while remaining > 0:
+                    read_size = min(chunk_size, remaining)
+                    total_lines += f.read(read_size).count(b"\n")
+                    remaining -= read_size
             result = [
                 line.decode("utf-8", errors="replace").rstrip("\r")
                 for line in collected
                 if line
             ]
-            return result[-n:] if len(result) > n else result
-
-    @staticmethod
-    def _count_lines(path: Path) -> int:
-        """统计文件行数。"""
-        count = 0
-        with open(path, "rb") as f:
-            for _ in f:
-                count += 1
-        return count
+            return (result[-n:] if len(result) > n else result, total_lines)
 
     # ------------------------------------------------------------------
     #  控制
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _module_args(svc: Service) -> list[str]:
+        """构造服务启动命令。
+
+        若服务脚本位于 Python 包内（有 __init__.py），使用 python -m 方式启动以支持相对导入；
+        否则直接运行脚本文件。
+        """
+        script_dir = svc.script.parent
+        if (script_dir / "__init__.py").exists():
+            rel = svc.script.resolve().relative_to(PROJECT_ROOT.resolve())
+            module = str(rel.with_suffix("")).replace(os.sep, ".")
+            return [PYTHON, "-u", "-m", module, *svc.args]
+        return [PYTHON, "-u", str(svc.script), *svc.args]
 
     async def start(self, name: str, wait: bool = True, timeout_seconds: int = 120) -> dict:
         """启动指定服务；若已运行则直接返回成功。"""
@@ -174,7 +189,7 @@ class ServiceManager:
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
         proc = subprocess.Popen(
-            [PYTHON, "-u", str(svc.script), *svc.args],
+            self._module_args(svc),
             **popen_kwargs,
         )
         self._processes[name] = _ProcessHandle(proc, log_file)
@@ -227,10 +242,10 @@ class ServiceManager:
     async def start_all(self, delay_seconds: float = 1.0) -> None:
         """后台启动所有未运行的服务（用于 --auto-start）。"""
         await asyncio.sleep(delay_seconds)
+        started = []
         for name, svc in self._services.items():
             if await self._is_port_open(svc.port):
                 continue
-            # 直接启动（wait=False 不需要 async sleep）
             handle = self._processes.get(name)
             if handle is not None and handle.proc.poll() is None:
                 continue
@@ -238,9 +253,19 @@ class ServiceManager:
             popen_kwargs: dict = {"stdout": log_file, "stderr": subprocess.STDOUT}
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-            proc = subprocess.Popen([PYTHON, "-u", str(svc.script), *svc.args], **popen_kwargs)
+            proc = subprocess.Popen(self._module_args(svc), **popen_kwargs)
             self._processes[name] = _ProcessHandle(proc, log_file)
             logger.info(f"启动 {svc.label} (pid={proc.pid})")
+            started.append((name, svc))
+
+        if started:
+            await asyncio.sleep(3)
+            for name, svc in started:
+                handle = self._processes.get(name)
+                if handle and handle.proc.poll() is not None:
+                    logger.error(
+                        f"{svc.label} 启动失败 (exit code {handle.proc.returncode})，请查看日志"
+                    )
 
     def shutdown(self) -> None:
         """停止所有托管的服务进程。"""

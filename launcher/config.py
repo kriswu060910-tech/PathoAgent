@@ -4,6 +4,7 @@
 """
 
 import os
+import sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -14,11 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
-# Python 解释器路径，可通过环境变量或 .env 覆盖
-PYTHON = os.environ.get(
-    "PYTHON_PATH",
-    r"D:\miniconda3\envs\patho\python.exe",
-)
+# Python 解释器路径，可通过环境变量覆盖；未设置时使用当前运行时的解释器
+PYTHON = os.environ.get("PYTHON_PATH", sys.executable)
 
 # ---------------------------------------------------------------------------
 #  服务定义

@@ -21,7 +21,7 @@ const DEFAULT_SERVICES: Services = {
   cellpose: { label: 'Cellpose 细胞分割', running: false, healthy: false, port: 8002 },
 }
 
-export function useServices() {
+export function useServices(enabled = true) {
   const [services, setServices] = useState<Services>(DEFAULT_SERVICES)
   const [loading, setLoading] = useState('')
   const [connected, setConnected] = useState(false)
@@ -39,13 +39,28 @@ export function useServices() {
   }, [])
 
   useEffect(() => {
+    if (!enabled) return
     fetchStatus()
-    const id = setInterval(fetchStatus, 5000)
-    return () => clearInterval(id)
-  }, [fetchStatus])
+    let id: ReturnType<typeof setInterval>
+    const startPolling = () => {
+      clearInterval(id)
+      id = setInterval(fetchStatus, 5000)
+    }
+    const stopPolling = () => { clearInterval(id) }
+    const handler = () => {
+      if (document.visibilityState === 'visible') startPolling()
+      else stopPolling()
+    }
+    startPolling()
+    document.addEventListener('visibilitychange', handler)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', handler) }
+  }, [fetchStatus, enabled])
+
+  const [error, setError] = useState('')
 
   const toggle = useCallback(async (name: string, running: boolean) => {
     setLoading(name)
+    setError('')
     try {
       const action = running ? 'stop' : 'start'
       await fetch(`${getLauncherUrl()}/${action}/${name}`, { method: 'POST' })
@@ -66,7 +81,7 @@ export function useServices() {
         } catch { /* ignore */ }
       }
     } catch {
-      // ignore
+      setError(`${running ? '停止' : '启动'}服务失败，请检查 Launcher 是否运行`)
     } finally {
       setLoading('')
     }
@@ -83,5 +98,5 @@ export function useServices() {
     return '无法获取日志'
   }, [])
 
-  return { services, loading, connected, toggle, refresh: fetchStatus, fetchLogs }
+  return { services, loading, connected, error, toggle, refresh: fetchStatus, fetchLogs }
 }

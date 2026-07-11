@@ -7,6 +7,7 @@ export function LoginPanel() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [adminKey, setAdminKey] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -24,15 +25,15 @@ export function LoginPanel() {
       setError('用户名至少 2 个字符')
       return
     }
-    if (!password || password.length < 4) {
-      setError('密码至少 4 个字符')
+    if (!password || password.length < 8) {
+      setError('密码至少 8 个字符')
       return
     }
 
     setIsSubmitting(true)
     try {
       const result = isRegister
-        ? await register(trimmedUser, password, displayName)
+        ? await register(trimmedUser, password, displayName, adminKey || undefined)
         : await login(trimmedUser, password)
 
       if (!result.ok) {
@@ -89,12 +90,25 @@ export function LoginPanel() {
             </div>
           )}
 
+          {isRegister && (
+            <div className="login-field">
+              <label>管理员密钥</label>
+              <input
+                type="password"
+                value={adminKey}
+                placeholder="可选，填写后注册为管理员"
+                disabled={isSubmitting}
+                onChange={(e) => setAdminKey(e.target.value)}
+              />
+            </div>
+          )}
+
           <div className="login-field">
             <label>密码</label>
             <input
               type="password"
               value={password}
-              placeholder={isRegister ? '至少 4 位' : '输入密码'}
+              placeholder={isRegister ? '至少 8 位' : '输入密码'}
               disabled={isSubmitting}
               onChange={(e) => setPassword(e.target.value)}
             />

@@ -13,11 +13,12 @@
  * - 用户数据存 localStorage，仅当前设备可用
  */
 
-import { type AppSettings, DEFAULT_SETTINGS, updateSettings, resetSettings, onSettingsPersist, getSettings } from './settings'
+import { type AppSettings, DEFAULT_SETTINGS, updateSettings, updateSettingsInMemory, resetSettings, onSettingsPersist, getSettings } from './settings'
 
 const SESSION_KEY = 'cookie-agent-session'
 const SESSION_TOKEN_KEY = 'cookie-agent-token'
 const SESSION_EXPIRY_KEY = 'cookie-agent-session-expiry'
+const SESSION_ROLE_KEY = 'cookie-agent-role'
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
 const LOCAL_USERS_KEY = 'cookie-agent-users'
 
@@ -27,6 +28,8 @@ export interface UserProfile {
   settings: AppSettings
   /** 远程模式为 true，本地模式为 false */
   remote: boolean
+  /** 用户角色：admin 或 user */
+  role: string
 }
 
 // --- 远程 API 调用 ---
@@ -60,14 +63,14 @@ async function apiCall(path: string, options?: { method?: string; body?: Record<
   return res.json()
 }
 
-async function remoteRegister(username: string, password: string, displayName: string) {
-  const data = await apiCall('/auth/register', { body: { username, password, displayName } })
-  return { token: data.token as string, username: data.username as string, displayName: data.displayName as string }
+async function remoteRegister(username: string, password: string, displayName: string, adminKey?: string) {
+  const data = await apiCall('/auth/register', { body: { username, password, displayName, adminKey: adminKey || '' } })
+  return { token: data.token as string, username: data.username as string, displayName: data.displayName as string, role: data.role as string || 'user' }
 }
 
 async function remoteLogin(username: string, password: string) {
   const data = await apiCall('/auth/login', { body: { username, password } })
-  return { token: data.token as string, username: data.username as string, displayName: data.displayName as string }
+  return { token: data.token as string, username: data.username as string, displayName: data.displayName as string, role: data.role as string || 'user' }
 }
 
 async function remoteFetchSettings(token: string): Promise<AppSettings | null> {
@@ -81,6 +84,10 @@ async function remoteFetchSettings(token: string): Promise<AppSettings | null> {
   return null
 }
 
+let _lastSyncError = ''
+export function getSyncError(): string { return _lastSyncError }
+export function clearSyncError() { _lastSyncError = '' }
+
 async function remoteSaveSettings(token: string, settings: AppSettings) {
   try {
     const res = await fetch(`${getAuthUrl()}/auth/settings`, {
@@ -89,10 +96,15 @@ async function remoteSaveSettings(token: string, settings: AppSettings) {
       body: JSON.stringify({ settings }),
     })
     if (res.status === 401) {
-      // token 过期，清除会话
       clearSession()
+    } else if (!res.ok) {
+      _lastSyncError = '设置同步到服务器失败'
+    } else {
+      _lastSyncError = ''
     }
-  } catch { /* 网络错误 — 静默失败，本地已保存 */ }
+  } catch {
+    _lastSyncError = '设置同步失败，仅保存在本地'
+  }
 }
 
 // --- 本地降级模式 ---
@@ -104,6 +116,7 @@ interface LocalUser {
   displayName: string
   settings: AppSettings
   createdAt: number
+  role: string
 }
 
 function loadLocalUsers(): Record<string, LocalUser> {
@@ -166,7 +179,7 @@ const listeners = new Set<() => void>()
 
 function notify() { listeners.forEach((fn) => fn()) }
 
-function loadSession(): { username: string; token: string | null; remote: boolean } | null {
+function loadSession(): { username: string; token: string | null; remote: boolean; role: string } | null {
   const username = localStorage.getItem(SESSION_KEY)
   if (!username) return null
   const expiry = localStorage.getItem(SESSION_EXPIRY_KEY)
@@ -174,24 +187,28 @@ function loadSession(): { username: string; token: string | null; remote: boolea
     localStorage.removeItem(SESSION_KEY)
     localStorage.removeItem(SESSION_TOKEN_KEY)
     localStorage.removeItem(SESSION_EXPIRY_KEY)
+    localStorage.removeItem(SESSION_ROLE_KEY)
     return null
   }
   const token = localStorage.getItem(SESSION_TOKEN_KEY)
   const remote = !!token
-  return { username, token, remote }
+  const role = localStorage.getItem(SESSION_ROLE_KEY) || 'user'
+  return { username, token, remote, role }
 }
 
-function saveSession(username: string, token: string | null) {
+function saveSession(username: string, token: string | null, role: string = 'user') {
   localStorage.setItem(SESSION_KEY, username)
   if (token) localStorage.setItem(SESSION_TOKEN_KEY, token)
   else localStorage.removeItem(SESSION_TOKEN_KEY)
   localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_TTL_MS))
+  localStorage.setItem(SESSION_ROLE_KEY, role)
 }
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY)
   localStorage.removeItem(SESSION_TOKEN_KEY)
   localStorage.removeItem(SESSION_EXPIRY_KEY)
+  localStorage.removeItem(SESSION_ROLE_KEY)
 }
 
 // --- 初始化 ---
@@ -216,9 +233,12 @@ function init() {
   const session = loadSession()
   if (session) {
     if (session.remote && session.token) {
-      // 远程模式：从服务端拉取设置
-      currentUser = { username: session.username, displayName: session.username, settings: { ...DEFAULT_SETTINGS }, remote: true }
+      // 远程模式：先从 localStorage 加载上次缓存的设置作为兜底
+      const cachedSettings = getSettings()
+      currentUser = { username: session.username, displayName: session.username, settings: cachedSettings, remote: true, role: session.role }
       currentToken = session.token
+      updateSettingsInMemory(cachedSettings)
+      // 异步从服务端拉取最新设置
       remoteFetchSettings(session.token).then((settings) => {
         if (!currentUser || currentUser.username !== session.username) return
         if (settings) {
@@ -232,7 +252,7 @@ function init() {
       const users = loadLocalUsers()
       const user = users[session.username]
       if (user) {
-        currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false }
+        currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false, role: user.role || 'user' }
         updateSettings(user.settings)
       }
     }
@@ -249,18 +269,18 @@ export function subscribeAuth(cb: () => void) {
 export function getCurrentUser(): UserProfile | null { return currentUser }
 export function isLoggedIn(): boolean { return currentUser !== null }
 
-export async function register(username: string, password: string, displayName: string): Promise<{ ok: boolean; error?: string }> {
+export async function register(username: string, password: string, displayName: string, adminKey?: string): Promise<{ ok: boolean; error?: string }> {
   const trimmedUser = username.trim().toLowerCase()
   if (!trimmedUser) return { ok: false, error: '用户名不能为空' }
   if (trimmedUser.length < 2) return { ok: false, error: '用户名至少 2 个字符' }
-  if (!password || password.length < 4) return { ok: false, error: '密码至少 4 个字符' }
+  if (!password || password.length < 8) return { ok: false, error: '密码至少 8 个字符' }
 
   // 尝试远程注册
   try {
-    const result = await remoteRegister(trimmedUser, password, displayName)
+    const result = await remoteRegister(trimmedUser, password, displayName, adminKey)
     currentToken = result.token
-    currentUser = { username: result.username, displayName: result.displayName, settings: { ...DEFAULT_SETTINGS }, remote: true }
-    saveSession(result.username, result.token)
+    currentUser = { username: result.username, displayName: result.displayName, settings: { ...DEFAULT_SETTINGS }, remote: true, role: result.role }
+    saveSession(result.username, result.token, result.role)
     updateSettings(currentUser.settings)
     notify()
     return { ok: true }
@@ -282,12 +302,13 @@ export async function register(username: string, password: string, displayName: 
     displayName: displayName.trim() || trimmedUser,
     settings: { ...DEFAULT_SETTINGS },
     createdAt: Date.now(),
+    role: 'user',
   }
   users[trimmedUser] = profile
   saveLocalUsers(users)
-  currentUser = { username: profile.username, displayName: profile.displayName, settings: profile.settings, remote: false }
+  currentUser = { username: profile.username, displayName: profile.displayName, settings: profile.settings, remote: false, role: 'user' }
   currentToken = null
-  saveSession(trimmedUser, null)
+  saveSession(trimmedUser, null, 'user')
   updateSettings(profile.settings)
   notify()
   return { ok: true }
@@ -300,8 +321,12 @@ export async function login(username: string, password: string): Promise<{ ok: b
   try {
     const result = await remoteLogin(trimmedUser, password)
     currentToken = result.token
-    currentUser = { username: result.username, displayName: result.displayName, settings: { ...DEFAULT_SETTINGS }, remote: true }
-    saveSession(result.username, result.token)
+    // 先用 localStorage 中缓存的设置（不触发持久化回调，避免覆盖服务端）
+    const cachedSettings = getSettings()
+    currentUser = { username: result.username, displayName: result.displayName, settings: cachedSettings, remote: true, role: result.role }
+    saveSession(result.username, result.token, result.role)
+    updateSettingsInMemory(cachedSettings)
+    notify()
     // 异步拉取服务端设置
     remoteFetchSettings(result.token).then((settings) => {
       if (settings && currentUser?.username === result.username) {
@@ -310,7 +335,6 @@ export async function login(username: string, password: string): Promise<{ ok: b
         notify()
       }
     })
-    notify()
     return { ok: true }
   } catch (err) {
     if (err instanceof HttpError) {
@@ -337,9 +361,9 @@ export async function login(username: string, password: string): Promise<{ ok: b
     return { ok: false, error: '密码错误' }
   }
 
-  currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false }
+  currentUser = { username: user.username, displayName: user.displayName, settings: user.settings, remote: false, role: user.role || 'user' }
   currentToken = null
-  saveSession(trimmedUser, null)
+  saveSession(trimmedUser, null, user.role || 'user')
   updateSettings(user.settings)
   notify()
   return { ok: true }
@@ -358,6 +382,50 @@ export function logout() {
   clearSession()
   resetSettings()
   notify()
+}
+
+export function isAdmin(): boolean {
+  return currentUser?.role === 'admin'
+}
+
+// --- 管理员 API ---
+
+export interface UserInfo {
+  id: number
+  username: string
+  displayName: string
+  role: string
+  createdAt: number
+}
+
+export async function fetchUsers(): Promise<UserInfo[]> {
+  if (!currentToken) return []
+  try {
+    const data = await apiCall('/auth/admin/users', { token: currentToken })
+    return data.users as UserInfo[]
+  } catch {
+    return []
+  }
+}
+
+export async function deleteUser(userId: number): Promise<boolean> {
+  if (!currentToken) return false
+  try {
+    await apiCall(`/auth/admin/users/${userId}`, { method: 'DELETE', token: currentToken })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function updateUserRole(userId: number, role: string): Promise<boolean> {
+  if (!currentToken) return false
+  try {
+    await apiCall(`/auth/admin/users/${userId}/role`, { method: 'PUT', body: { role }, token: currentToken })
+    return true
+  } catch {
+    return false
+  }
 }
 
 init()

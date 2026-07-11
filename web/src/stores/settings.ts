@@ -116,6 +116,12 @@ export function updateSettings(patch: Partial<AppSettings>) {
   saveSettings({ ...currentSettings, ...patch })
 }
 
+/** 仅在内存中更新设置（不触发持久化/远程同步回调），用于登录和会话恢复场景 */
+export function updateSettingsInMemory(s: AppSettings) {
+  currentSettings = s
+  notify()
+}
+
 /** 重置为默认值 */
 export function resetSettings() {
   saveSettings({ ...DEFAULT_SETTINGS })

@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-start-launcher"
+description = "Allows the start_launcher command"
+commands.allow = ["start_launcher"]
+
+[[permission]]
+identifier = "allow-get-launcher-info"
+description = "Allows the get_launcher_info command"
+commands.allow = ["get_launcher_info"]

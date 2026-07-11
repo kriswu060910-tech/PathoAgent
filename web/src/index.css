@@ -796,6 +796,29 @@ body {
   border-radius: var(--radius-md);
 }
 
+/* Inline error messages */
+.chat-file-error,
+.admin-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin: 4px 12px;
+  border-radius: 6px;
+  background: rgba(255, 100, 100, 0.15);
+  color: #f88;
+  font-size: 13px;
+}
+.chat-file-error button,
+.admin-error button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 0 0 8px;
+}
+
 /* Chat input */
 .chat-input {
   display: flex;
@@ -1897,4 +1920,114 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* Admin panel */
+.admin-content {
+  padding: 16px 24px 24px;
+  overflow-y: auto;
+}
+
+.admin-loading {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.admin-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.admin-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.admin-role-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.admin-role-badge.admin {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+}
+
+.admin-role-badge.user {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.admin-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.admin-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.admin-btn.role:hover {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.admin-btn.delete:hover {
+  color: var(--error);
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.admin-btn.delete.confirm {
+  color: #fff;
+  border-color: #c00;
+  background: #c00;
+}
+
+.sidebar-admin-badge {
+  margin-left: 4px;
+  font-size: 12px;
+}
+
+.sidebar-footer-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar-footer-buttons .settings-trigger-btn {
+  flex: 1;
+}
+
+.sidebar-footer-buttons .admin-btn {
+  flex: 1;
 }

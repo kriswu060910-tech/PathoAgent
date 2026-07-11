@@ -16,7 +16,6 @@ async function callPathoAPI(baseUrl: string, image: string, question: string, st
 }
 
 export function createPathologyTools(getImages: GetImages, apiUrl?: string): Tool[] {
-  const baseUrl = getApiUrl(apiUrl)
   return [
     {
       name: 'pathology_analyze',
@@ -31,6 +30,7 @@ export function createPathologyTools(getImages: GetImages, apiUrl?: string): Too
         const images = getImages()
         if (!images.length) return '请先上传病理图像再进行分析。'
 
+        const baseUrl = getApiUrl(apiUrl)
         const style = args.style === 'cod' ? 'cod' : 'cot'
         let question = args.question || '请分析这张病理图像，描述所见并给出诊断意见。'
         if (args.region) {
@@ -58,6 +58,7 @@ export function createPathologyTools(getImages: GetImages, apiUrl?: string): Too
         const images = getImages()
         if (images.length < 2) return '对比功能需要至少上传 2 张病理图片。'
 
+        const baseUrl = getApiUrl(apiUrl)
         const focus = args.focus || '病理特征差异'
 
         return processImages(images, async (image, idx) => {
@@ -78,6 +79,7 @@ export function createPathologyTools(getImages: GetImages, apiUrl?: string): Too
         const images = getImages()
         if (!images.length) return '请先上传病理图像再生成报告。'
 
+        const baseUrl = getApiUrl(apiUrl)
         const clinical = args.clinical_info ? `\n临床信息：${args.clinical_info}` : ''
         const question = `请基于这张病理图像生成一份结构化诊断报告，包含以下部分：
 1. **诊断结论**：最可能的病理诊断

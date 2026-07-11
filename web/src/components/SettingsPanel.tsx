@@ -15,69 +15,50 @@ interface ValidationResult {
   message: string
 }
 
+async function validateEndpoint(
+  url: string,
+  options: RequestInit,
+  label: string,
+  timeout = 10_000,
+): Promise<ValidationResult> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal })
+    if (res.ok) return { name: label, ok: true, message: '连接成功' }
+    if (res.status === 401 || res.status === 403) return { name: label, ok: false, message: 'API Key 无效或已过期' }
+    return { name: label, ok: false, message: `请求失败 (${res.status})` }
+  } catch (err) {
+    const msg = err instanceof DOMException && err.name === 'AbortError'
+      ? `连接超时 (${timeout / 1000}s)`
+      : `无法连接: ${err instanceof Error ? err.message : '网络错误'}`
+    return { name: label, ok: false, message: msg }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
   const results: ValidationResult[] = []
-  const VALIDATION_TIMEOUT = 10_000
 
-  // 验证 LLM API
   if (s.apiKey) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT)
-    try {
-      const baseURL = (s.baseURL || 'https://api.deepseek.com').replace(/\/$/, '')
-      const res = await fetch(`${baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: sanitizeHeaders({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${s.apiKey}` }),
-        body: JSON.stringify({ model: s.model || 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
-        signal: controller.signal,
-      })
-      if (res.ok) {
-        results.push({ name: 'LLM API', ok: true, message: '连接成功' })
-      } else if (res.status === 401 || res.status === 403) {
-        results.push({ name: 'LLM API', ok: false, message: 'API Key 无效或已过期' })
-      } else {
-        results.push({ name: 'LLM API', ok: false, message: `请求失败 (${res.status})` })
-      }
-    } catch (err) {
-      const msg = err instanceof DOMException && err.name === 'AbortError'
-        ? `连接超时 (${VALIDATION_TIMEOUT / 1000}s)`
-        : `无法连接: ${err instanceof Error ? err.message : '网络错误'}`
-      results.push({ name: 'LLM API', ok: false, message: msg })
-    } finally {
-      clearTimeout(timer)
-    }
+    const baseURL = (s.baseURL || 'https://api.deepseek.com').replace(/\/$/, '')
+    results.push(await validateEndpoint(`${baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: sanitizeHeaders({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${s.apiKey}` }),
+      body: JSON.stringify({ model: s.model || 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+    }, 'LLM API'))
   } else {
     results.push({ name: 'LLM API', ok: false, message: '未配置 API Key，Agent 将降级为简单聊天' })
   }
 
-  // 验证视觉 API（仅当配置了时才验证）
   if (s.visionBaseUrl && s.visionApiKey) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT)
-    try {
-      const baseURL = s.visionBaseUrl.replace(/\/$/, '')
-      const res = await fetch(`${baseURL}/models`, {
-        headers: sanitizeHeaders({ 'Authorization': `Bearer ${s.visionApiKey}` }),
-        signal: controller.signal,
-      })
-      if (res.ok) {
-        results.push({ name: '视觉 API', ok: true, message: '连接成功' })
-      } else if (res.status === 401 || res.status === 403) {
-        results.push({ name: '视觉 API', ok: false, message: 'API Key 无效' })
-      } else {
-        results.push({ name: '视觉 API', ok: false, message: `请求失败 (${res.status})` })
-      }
-    } catch (err) {
-      const msg = err instanceof DOMException && err.name === 'AbortError'
-        ? `连接超时 (${VALIDATION_TIMEOUT / 1000}s)`
-        : `无法连接: ${err instanceof Error ? err.message : '网络错误'}`
-      results.push({ name: '视觉 API', ok: false, message: msg })
-    } finally {
-      clearTimeout(timer)
-    }
+    const baseURL = s.visionBaseUrl.replace(/\/$/, '')
+    results.push(await validateEndpoint(`${baseURL}/models`, {
+      headers: sanitizeHeaders({ 'Authorization': `Bearer ${s.visionApiKey}` }),
+    }, '视觉 API'))
   }
 
-  // 验证后端服务
   const backends = [
     { url: s.pathoApiUrl, name: '病理分析' },
     { url: s.cellposeApiUrl, name: 'Cellpose' },
@@ -86,11 +67,7 @@ async function validateSettings(s: AppSettings): Promise<ValidationResult[]> {
     if (backend.url) {
       try {
         const res = await fetch(`${backend.url}/health`, { signal: AbortSignal.timeout(5000) })
-        if (res.ok) {
-          results.push({ name: backend.name, ok: true, message: '运行中' })
-        } else {
-          results.push({ name: backend.name, ok: false, message: `响应异常 (${res.status})` })
-        }
+        results.push({ name: backend.name, ok: res.ok, message: res.ok ? '运行中' : `响应异常 (${res.status})` })
       } catch {
         results.push({ name: backend.name, ok: false, message: '未运行或无法访问' })
       }
@@ -114,6 +91,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     try {
       const validationResults = await validateSettings(settings)
       setResults(validationResults)
+      update(settings)
     } catch {
       setResults([{ name: '验证', ok: false, message: '验证过程出错' }])
     } finally {

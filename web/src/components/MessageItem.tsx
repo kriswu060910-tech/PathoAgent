@@ -1,3 +1,4 @@
+import React from 'react'
 import type { Message } from '../types/agent'
 import { formatTime } from '../utils'
 import { BoundingBoxOverlay } from './BoundingBoxOverlay'
@@ -8,7 +9,7 @@ interface MessageItemProps {
   message: Message
 }
 
-export function MessageItem({ message }: MessageItemProps) {
+export const MessageItem = React.memo(function MessageItem({ message }: MessageItemProps) {
   const isUser = message.role === 'user'
   const hasAnnotations = !isUser && message.annotations && message.annotations.length > 0
 
@@ -47,7 +48,7 @@ export function MessageItem({ message }: MessageItemProps) {
           {isUser ? (
             message.content
           ) : (
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            <ReactMarkdown urlTransform={(url) => /^https?:\/\//i.test(url) ? url : ''}>{message.content}</ReactMarkdown>
           )}
           {message.status === 'streaming' && <span className="cursor" />}
         </div>
@@ -60,4 +61,4 @@ export function MessageItem({ message }: MessageItemProps) {
       </div>
     </div>
   )
-}
+})

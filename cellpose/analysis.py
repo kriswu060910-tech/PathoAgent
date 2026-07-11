@@ -71,9 +71,10 @@ def create_overlay(img: np.ndarray, masks: np.ndarray) -> np.ndarray:
     if n == 0:
         return overlay
 
+    render_n = min(n, config.MAX_DISPLAY_CELLS)
     colors = _palette(n)
 
-    for i in range(1, n + 1):
+    for i in range(1, render_n + 1):
         region = masks == i
         if not region.any():
             continue
@@ -82,7 +83,7 @@ def create_overlay(img: np.ndarray, masks: np.ndarray) -> np.ndarray:
             + colors[i] * config.OVERLAY_ALPHA
         ).astype(np.uint8)
 
-    for i in range(1, n + 1):
+    for i in range(1, render_n + 1):
         info = _cell_contour(masks == i)
         if info is None:
             continue

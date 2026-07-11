@@ -53,16 +53,18 @@ def test_read_tail_small_file(tmp_path: Path):
     manager = ServiceManager()
     log = tmp_path / "test.log"
     log.write_text("line1\nline2\nline3\n", encoding="utf-8")
-    tail = manager._read_tail(log, 2)
+    tail, total = manager._read_tail_with_count(log, 2)
     assert tail == ["line2", "line3"]
+    assert total >= 3
 
 
 def test_read_tail_more_lines_than_file(tmp_path: Path):
     manager = ServiceManager()
     log = tmp_path / "test.log"
     log.write_text("line1\nline2\n", encoding="utf-8")
-    tail = manager._read_tail(log, 10)
+    tail, total = manager._read_tail_with_count(log, 10)
     assert tail == ["line1", "line2"]
+    assert total >= 2
 
 
 def test_start_skips_when_port_healthy(tmp_path: Path):

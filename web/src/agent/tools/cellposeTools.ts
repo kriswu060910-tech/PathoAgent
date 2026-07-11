@@ -61,7 +61,6 @@ function formatMeasureTable(cells: CellMeasurement[]): string {
 }
 
 export function createCellposeTools(getImages: GetImages, apiUrl?: string): Tool[] {
-  const baseUrl = getApiUrl(apiUrl)
   return [
     {
       name: 'cell_segment',
@@ -73,6 +72,7 @@ export function createCellposeTools(getImages: GetImages, apiUrl?: string): Tool
       async execute(args) {
         const images = getImages()
         if (!images.length) return '请先上传图像再进行细胞分割。'
+        const baseUrl = getApiUrl(apiUrl)
         const diameter = parseOptionalFloat(args.diameter)
 
         return processImages(images, async (image, idx) => {
@@ -98,6 +98,7 @@ export function createCellposeTools(getImages: GetImages, apiUrl?: string): Tool
       async execute(args) {
         const images = getImages()
         if (!images.length) return '请先上传图像再进行测量。'
+        const baseUrl = getApiUrl(apiUrl)
         const pixelSize = parseOptionalFloat(args.pixel_size)
         const diameter = parseOptionalFloat(args.diameter)
 

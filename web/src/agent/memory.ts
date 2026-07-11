@@ -44,9 +44,14 @@ export class ConversationMemory {
     }
     this.items.push(item)
 
-    // 滑动窗口：超出上限时保留 system prompt + 最近的对话
+    // 滑动窗口：超出上限时保留 system prompt + 最近的对话，并释放旧图片数据
     if (this.items.length > this.maxItems) {
       const system = this.items.find((i) => i.role === 'system')
+      const cutoff = this.items.length - this.maxItems + (system ? 1 : 0)
+      const evicted = this.items.slice(0, cutoff)
+      for (const item of evicted) {
+        if (item.images) item.images = undefined
+      }
       const recent = this.items.slice(-this.maxItems + (system ? 1 : 0))
       this.items = system ? [system, ...recent] : recent
     }

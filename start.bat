@@ -11,7 +11,8 @@ echo.
 echo [1/2] 启动服务管理器 (port 8099)...
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
-if defined PYTHON_PATH (set "PYTHON_EXE=%PYTHON_PATH%") else (set "PYTHON_EXE=D:\miniconda3\envs\patho\python.exe")
+if defined PYTHON_PATH (set "PYTHON_EXE=%PYTHON_PATH%") else (where python >nul 2>nul && (for /f "delims=" %i in ('where python') do if not defined PYTHON_EXE set "PYTHON_EXE=%i"))
+if not defined PYTHON_EXE (echo 错误: 找不到 Python 解释器，请设置 PYTHON_PATH 环境变量 && exit /b 1)
 start "Agent Launcher" /min cmd /c "%PYTHON_EXE% -m launcher.main --auto-start"
 
 :: 等待管理器就绪

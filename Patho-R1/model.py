@@ -59,6 +59,7 @@ class ModelManager:
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_compute_dtype=torch.bfloat16,
+                llm_int8_enable_fp32_cpu_offload=True,
             )
             self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_name,

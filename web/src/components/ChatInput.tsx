@@ -6,6 +6,7 @@ interface ChatInputProps {
   disabled?: boolean
 }
 
+
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
 const COMPRESS_THRESHOLD = 2 * 1024 * 1024 // 2MB 以上触发压缩
 
@@ -27,9 +28,9 @@ function compressImage(dataUrl: string, maxWidth = 1920, quality = 0.85): Promis
   })
 }
 
-async function processImage(file: File): Promise<{ dataUrl: string; name: string; type: 'image' } | null> {
+async function processImage(file: File, onError?: (msg: string) => void): Promise<{ dataUrl: string; name: string; type: 'image' } | null> {
   if (file.size > MAX_IMAGE_SIZE) {
-    alert(`图片 "${file.name}" 超过 10MB 限制，请压缩后重试。`)
+    onError?.(`图片 "${file.name}" 超过 10MB 限制，请压缩后重试。`)
     return null
   }
   let dataUrl = await fileToDataUrl(file)
@@ -52,6 +53,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [content, setContent] = useState('')
   const [enableSearch, setEnableSearch] = useState(false)
   const [images, setImages] = useState<MessageAttachment[]>([])
+  const [fileError, setFileError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const submit = () => {
@@ -76,7 +78,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const imageFiles = files.filter((f) => f.type.startsWith('image/'))
-    const results = await Promise.all(imageFiles.map(processImage))
+    const results = await Promise.all(imageFiles.map((f) => processImage(f, (msg) => setFileError(msg))))
     const newImages = results.filter((r): r is NonNullable<typeof r> => r !== null)
     setImages((prev) => [...prev, ...newImages])
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -90,6 +92,12 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   return (
     <form className="chat-input" onSubmit={handleSubmit}>
+      {fileError && (
+        <div className="chat-file-error">
+          {fileError}
+          <button type="button" onClick={() => setFileError('')}>✕</button>
+        </div>
+      )}
       {images.length > 0 && (
         <div className="image-preview-bar">
           {images.map((img, i) => (

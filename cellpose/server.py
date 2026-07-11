@@ -18,12 +18,11 @@ API 端点：
 
 import argparse
 import asyncio
-
-# 模型文件存到 D 盘，必须在 import cellpose 之前设置
 import os
 
 import config
 
+# 模型缓存目录，必须在 import cellpose 之前设置
 os.environ.setdefault(
     "CELLPOSE_LOCAL_MODELS_PATH", str(config.CELLPOSE_LOCAL_MODELS_PATH)
 )
@@ -73,9 +72,13 @@ app = FastAPI(title="Cellpose API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "tauri://localhost",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 

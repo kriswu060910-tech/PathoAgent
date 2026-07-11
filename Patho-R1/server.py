@@ -47,9 +47,13 @@ app = FastAPI(title="Patho-R1 API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "tauri://localhost",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -64,10 +68,10 @@ async def image_too_large_handler(_request: Request, exc: ImageTooLargeError):
 
 @app.exception_handler(ValueError)
 async def value_error_handler(_request: Request, exc: ValueError):
-    logger.warning(f"请求参数错误: {exc}")
+    logger.warning(f"请求参数错误: {type(exc).__name__}")
     return JSONResponse(
         status_code=400,
-        content={"detail": str(exc)},
+        content={"detail": "请求参数错误，请检查输入"},
     )
 
 

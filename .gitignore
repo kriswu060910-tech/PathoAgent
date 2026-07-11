@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .venv/
 logs/
+*.log
 
 # 环境变量（含 API 密钥）
 .env
@@ -27,4 +28,15 @@ cellpose/models/
 .idea/
 *.swp
 *.swo
-data/  
+data/
+
+# 数据库
+*.db
+*.sqlite
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# JWT 密钥文件
+.jwt_secret  

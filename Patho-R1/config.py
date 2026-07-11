@@ -15,10 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 MODEL_MAP = {
     "7b": "WenchuanZhang/Patho-R1-7B",
     "3b": "WenchuanZhang/Patho-R1-3B",
-    "qwen": os.environ.get(
-        "PATHO_QWEN_MODEL_PATH",
-        "D:/hf_models/models/Qwen--Qwen2.5-VL-3B-Instruct/snapshots/master",
-    ),
+    "qwen": os.environ.get("PATHO_QWEN_MODEL_PATH", "Qwen/Qwen2.5-VL-3B-Instruct"),
 }
 
 # ---------------------------------------------------------------------------

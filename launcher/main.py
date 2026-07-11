@@ -13,12 +13,15 @@ API 端点：
 
 import argparse
 import asyncio
+import hmac
+import os
 import signal
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from . import config
 from .logger import setup_logger
@@ -35,9 +38,22 @@ app.add_middleware(
         "http://localhost:4173",   # Vite preview
         "tauri://localhost",       # Tauri 生产环境
     ],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+
+# Launcher token 认证：通过环境变量 LAUNCHER_TOKEN 设置
+_LAUNCHER_TOKEN = os.environ.get("LAUNCHER_TOKEN", "")
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if _LAUNCHER_TOKEN and request.url.path not in ("/health", "/docs", "/openapi.json"):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[7:], _LAUNCHER_TOKEN):
+            return JSONResponse(status_code=401, content={"detail": "未授权"})
+    return await call_next(request)
+
 
 _AUTO_START = False
 
