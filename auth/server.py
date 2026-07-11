@@ -50,6 +50,18 @@ class LoginRequest(BaseModel):
 class SettingsRequest(BaseModel):
     settings: dict
 
+class ResetPasswordRequest(BaseModel):
+    newPassword: str
+
+class UpdateDisplayNameRequest(BaseModel):
+    displayName: str
+
+class UpdateEnabledRequest(BaseModel):
+    enabled: bool
+
+class BatchRequest(BaseModel):
+    ids: list[int]
+
 
 # --- 依赖 ---
 
@@ -64,6 +76,8 @@ def get_current_user(request: Request) -> dict:
     user = database.find_user_by_id(int(payload["sub"]))
     if not user:
         raise HTTPException(401, "用户不存在")
+    if not user.get("enabled", 1):
+        raise HTTPException(403, "账号已被禁用，请联系管理员")
     return user
 
 
@@ -109,6 +123,8 @@ def login(req: LoginRequest):
         raise HTTPException(401, "用户名或密码错误")
     if not verify_password(req.password, user["salt"], user["password_hash"]):
         raise HTTPException(401, "用户名或密码错误")
+    if not user.get("enabled", 1):
+        raise HTTPException(403, "账号已被禁用，请联系管理员")
 
     token = create_token(user["id"], username)
     return {
@@ -149,7 +165,10 @@ def require_admin(user: dict = Depends(get_current_user)) -> dict:
 
 @app.get("/auth/admin/users")
 def admin_list_users(_admin: dict = Depends(require_admin)):
-    return {"users": database.list_users()}
+    users = database.list_users()
+    for u in users:
+        u["enabled"] = bool(u.get("enabled", 1))
+    return {"users": users}
 
 
 @app.delete("/auth/admin/users/{user_id}")
@@ -172,6 +191,76 @@ def admin_update_role(user_id: int, req: dict, _admin: dict = Depends(require_ad
     if not database.update_user_role(user_id, role):
         raise HTTPException(404, "用户不存在")
     return {"ok": True}
+
+
+@app.put("/auth/admin/users/{user_id}/password")
+def admin_reset_password(user_id: int, req: ResetPasswordRequest, _admin: dict = Depends(require_admin)):
+    if len(req.newPassword) < 8:
+        raise HTTPException(400, "密码至少 8 个字符")
+    salt = generate_salt()
+    pw_hash = hash_password(req.newPassword, salt)
+    if not database.update_user_password(user_id, pw_hash, salt):
+        raise HTTPException(404, "用户不存在")
+    return {"ok": True}
+
+
+@app.put("/auth/admin/users/{user_id}/display-name")
+def admin_update_display_name(user_id: int, req: UpdateDisplayNameRequest, _admin: dict = Depends(require_admin)):
+    name = req.displayName.strip()[:64]
+    if not name:
+        raise HTTPException(400, "显示名不能为空")
+    if not database.update_user_display_name(user_id, name):
+        raise HTTPException(404, "用户不存在")
+    return {"ok": True}
+
+
+@app.put("/auth/admin/users/{user_id}/enabled")
+def admin_toggle_enabled(user_id: int, req: UpdateEnabledRequest, admin: dict = Depends(require_admin)):
+    if user_id == admin["id"]:
+        raise HTTPException(400, "不能禁用自己的账号")
+    if not database.update_user_enabled(user_id, req.enabled):
+        raise HTTPException(404, "用户不存在")
+    return {"ok": True}
+
+
+@app.get("/auth/admin/users/{user_id}/settings")
+def admin_get_user_settings(user_id: int, _admin: dict = Depends(require_admin)):
+    data = database.get_user_settings(user_id)
+    if not data:
+        raise HTTPException(404, "用户不存在")
+    return data
+
+
+@app.post("/auth/admin/batch/delete")
+def admin_batch_delete(req: BatchRequest, admin: dict = Depends(require_admin)):
+    if not req.ids:
+        raise HTTPException(400, "未选择用户")
+    if admin["id"] in req.ids:
+        raise HTTPException(400, "不能删除自己")
+    admins = [u for u in database.list_users() if u.get("role") == "admin"]
+    target_admins = [u for u in admins if u["id"] in req.ids]
+    if len(admins) - len(target_admins) < 1:
+        raise HTTPException(400, "不能删除所有管理员")
+    deleted = database.batch_delete_users(req.ids)
+    return {"ok": True, "deleted": deleted}
+
+
+@app.post("/auth/admin/batch/enable")
+def admin_batch_enable(req: BatchRequest, _admin: dict = Depends(require_admin)):
+    if not req.ids:
+        raise HTTPException(400, "未选择用户")
+    count = database.batch_update_enabled(req.ids, True)
+    return {"ok": True, "updated": count}
+
+
+@app.post("/auth/admin/batch/disable")
+def admin_batch_disable(req: BatchRequest, admin: dict = Depends(require_admin)):
+    if not req.ids:
+        raise HTTPException(400, "未选择用户")
+    if admin["id"] in req.ids:
+        raise HTTPException(400, "不能禁用自己的账号")
+    count = database.batch_update_enabled(req.ids, False)
+    return {"ok": True, "updated": count}
 
 
 @app.get("/health")

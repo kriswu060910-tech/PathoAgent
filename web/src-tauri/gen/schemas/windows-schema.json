@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the diagnose_launcher command",
+          "type": "string",
+          "const": "allow-diagnose-launcher",
+          "markdownDescription": "Allows the diagnose_launcher command"
+        },
+        {
           "description": "Allows the get_launcher_info command",
           "type": "string",
           "const": "allow-get-launcher-info",

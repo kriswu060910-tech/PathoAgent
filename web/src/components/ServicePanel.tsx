@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useServices } from '../hooks/useServices'
 import { getSettings } from '../stores/settings'
-import { startLauncher } from '../utils/tauri'
+import { startLauncher, diagnoseLauncher, type LauncherDiagnosis } from '../utils/tauri'
 
 function statusColor(connected: boolean, s: { healthy: boolean; crashed?: boolean; running: boolean }): string {
   if (!connected) return '#6b7280'
@@ -31,9 +31,12 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   const [toastType, setToastType] = useState<'info' | 'success' | 'error'>('info')
   const [retrying, setRetrying] = useState(false)
   const [startingLauncher, setStartingLauncher] = useState(false)
+  const [diagnosis, setDiagnosis] = useState<LauncherDiagnosis | null>(null)
+  const [diagnosing, setDiagnosing] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(null)
   const launcherPollCancel = useRef(false)
+  const autoStartAttempted = useRef(false)
   const names = Object.keys(services)
 
   const runningCount = names.filter((n) => services[n].running).length
@@ -94,9 +97,17 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
     onOpenSettings?.()
   }
 
+  const handleDiagnose = async () => {
+    setDiagnosing(true)
+    const result = await diagnoseLauncher()
+    setDiagnosis(result)
+    setDiagnosing(false)
+  }
+
   const handleStartLauncher = async () => {
     launcherPollCancel.current = false
     setStartingLauncher(true)
+    setDiagnosis(null)
     try {
       showToast('正在启动 Launcher...', 'info')
       const result = await startLauncher()
@@ -115,10 +126,12 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
           } catch { /* 还没就绪，继续等 */ }
         }
         if (!launcherPollCancel.current) {
-          showToast('Launcher 启动超时，请检查后端日志', 'error')
+          showToast('Launcher 启动超时，点击"诊断"查看详情', 'error')
+          handleDiagnose()
         }
       } else {
         showToast(`启动失败: ${result.message}`, 'error')
+        handleDiagnose()
       }
     } finally {
       if (!launcherPollCancel.current) {
@@ -126,6 +139,41 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
       }
     }
   }
+
+  // 应用启动时自动拉起 Launcher
+  useEffect(() => {
+    if (connected || autoStartAttempted.current || !total) return
+    autoStartAttempted.current = true
+
+    const autoStart = async () => {
+      setStartingLauncher(true)
+      try {
+        const result = await startLauncher()
+        if (result.ok) {
+          for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 1000))
+            try {
+              const res = await fetch(`${getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || '/api/launcher'}/status`, { signal: AbortSignal.timeout(2000) })
+              if (res.ok) {
+                await refresh()
+                showToast('Launcher 已自动启动', 'success')
+                return
+              }
+            } catch { /* 等待就绪 */ }
+          }
+          showToast('Launcher 自动启动超时，请手动启动', 'error')
+        }
+      } catch {
+        // 静默失败，用户可手动启动
+      } finally {
+        setStartingLauncher(false)
+      }
+    }
+
+    const timer = setTimeout(autoStart, 1500)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, total])
 
   if (!total) return null
 
@@ -181,6 +229,13 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
                     {startingLauncher ? '启动中...' : '🚀 启动 Launcher'}
                   </button>
                   <button
+                    className="service-action-btn diagnose"
+                    onClick={handleDiagnose}
+                    disabled={diagnosing}
+                  >
+                    {diagnosing ? '诊断中...' : '🔍 诊断'}
+                  </button>
+                  <button
                     className="service-action-btn retry"
                     onClick={handleRetry}
                     disabled={retrying}
@@ -194,6 +249,39 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
                     ⚙ 检查设置
                   </button>
                 </div>
+
+                {/* 诊断结果 */}
+                {diagnosis && (
+                  <details className="service-diag-details" open>
+                    <summary>诊断结果</summary>
+                    <div className="service-diag-content">
+                      <DiagRow label="项目目录" ok={diagnosis.projectRoot.ok}
+                        detail={diagnosis.projectRoot.ok ? diagnosis.projectRoot.path : (diagnosis.projectRoot.reason || '未找到')} />
+                      <DiagRow label="Python 路径" ok={diagnosis.pythonPath.ok}
+                        detail={diagnosis.pythonPath.ok ? diagnosis.pythonPath.path : (diagnosis.pythonPath.reason || '未找到')} />
+                      <DiagRow label="Launcher 端口" ok={diagnosis.launcherRunning}
+                        detail={`:${diagnosis.launcherPort} ${diagnosis.launcherRunning ? '(已运行)' : '(未响应)'}`} />
+                      {diagnosis.wherePython.paths && diagnosis.wherePython.paths.length > 0 && (
+                        <div className="service-diag-sub">
+                          <span className="service-diag-label">where python</span>
+                          {diagnosis.wherePython.paths.map((p, i) => (
+                            <code key={i} className="service-diag-value">{p}</code>
+                          ))}
+                        </div>
+                      )}
+                      <div className="service-diag-sub">
+                        <span className="service-diag-label">环境变量</span>
+                        {Object.entries(diagnosis.envVars).map(([k, v]) => (
+                          <div key={k}>
+                            <code className="service-diag-key">{k}</code>
+                            <code className="service-diag-value">{v || '(未设置)'}</code>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+                )}
+
                 <details className="service-help-details">
                   <summary>如何启动后端？</summary>
                   <div className="service-help-content">
@@ -201,6 +289,7 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
                     <p><strong>方式二：</strong>手动启动 Launcher：</p>
                     <pre className="service-help-cmd">python -m launcher.main --auto-start</pre>
                     <p><strong>方式三：</strong>如果 Launcher 已在其他端口运行，点击"检查设置"修改地址。</p>
+                    <p><strong>排错：</strong>点击"🔍 诊断"按钮查看路径解析详情。如果项目目录或 Python 未找到，请设置环境变量 <code>PATHO_AGENT_PROJECT</code> 和 <code>PYTHON_PATH</code>。</p>
                   </div>
                 </details>
               </div>
@@ -265,6 +354,16 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
       {toast && (
         <div className={`service-toast service-toast-${toastType}`}>{toast}</div>
       )}
+    </div>
+  )
+}
+
+function DiagRow({ label, ok, detail }: { label: string; ok: boolean; detail: string }) {
+  return (
+    <div className="service-diag-row">
+      <span className={`service-diag-indicator ${ok ? 'ok' : 'fail'}`}>{ok ? '✓' : '✗'}</span>
+      <span className="service-diag-label">{label}</span>
+      <code className="service-diag-value">{detail}</code>
     </div>
   )
 }

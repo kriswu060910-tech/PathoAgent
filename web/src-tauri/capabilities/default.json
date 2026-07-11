@@ -5,6 +5,7 @@
   "permissions": [
     "core:default",
     "allow-start-launcher",
-    "allow-get-launcher-info"
+    "allow-get-launcher-info",
+    "allow-diagnose-launcher"
   ]
 }

@@ -7,3 +7,8 @@ commands.allow = ["start_launcher"]
 identifier = "allow-get-launcher-info"
 description = "Allows the get_launcher_info command"
 commands.allow = ["get_launcher_info"]
+
+[[permission]]
+identifier = "allow-diagnose-launcher"
+description = "Allows the diagnose_launcher command"
+commands.allow = ["diagnose_launcher"]

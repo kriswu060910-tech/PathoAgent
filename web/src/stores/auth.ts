@@ -395,6 +395,7 @@ export interface UserInfo {
   username: string
   displayName: string
   role: string
+  enabled: boolean
   createdAt: number
 }
 
@@ -425,6 +426,81 @@ export async function updateUserRole(userId: number, role: string): Promise<bool
     return true
   } catch {
     return false
+  }
+}
+
+export async function resetUserPassword(userId: number, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+  if (!currentToken) return { ok: false, error: '未登录' }
+  try {
+    await apiCall(`/auth/admin/users/${userId}/password`, { method: 'PUT', body: { newPassword }, token: currentToken })
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function updateDisplayName(userId: number, displayName: string): Promise<boolean> {
+  if (!currentToken) return false
+  try {
+    await apiCall(`/auth/admin/users/${userId}/display-name`, { method: 'PUT', body: { displayName }, token: currentToken })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function updateUserEnabled(userId: number, enabled: boolean): Promise<boolean> {
+  if (!currentToken) return false
+  try {
+    await apiCall(`/auth/admin/users/${userId}/enabled`, { method: 'PUT', body: { enabled }, token: currentToken })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export interface UserSettingsData {
+  user: { id: number; username: string; display_name: string; role: string; enabled: boolean; created_at: number }
+  settings: Record<string, unknown>
+}
+
+export async function fetchUserSettings(userId: number): Promise<UserSettingsData | null> {
+  if (!currentToken) return null
+  try {
+    const data = await apiCall(`/auth/admin/users/${userId}/settings`, { token: currentToken })
+    return data as unknown as UserSettingsData
+  } catch {
+    return null
+  }
+}
+
+export async function batchDeleteUsers(ids: number[]): Promise<{ ok: boolean; error?: string; deleted?: number }> {
+  if (!currentToken) return { ok: false, error: '未登录' }
+  try {
+    const data = await apiCall('/auth/admin/batch/delete', { method: 'POST', body: { ids }, token: currentToken })
+    return { ok: true, deleted: data.deleted as number }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function batchEnableUsers(ids: number[]): Promise<boolean> {
+  if (!currentToken) return false
+  try {
+    await apiCall('/auth/admin/batch/enable', { method: 'POST', body: { ids }, token: currentToken })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function batchDisableUsers(ids: number[]): Promise<{ ok: boolean; error?: string }> {
+  if (!currentToken) return { ok: false, error: '未登录' }
+  try {
+    await apiCall('/auth/admin/batch/disable', { method: 'POST', body: { ids }, token: currentToken })
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 

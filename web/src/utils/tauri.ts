@@ -34,15 +34,39 @@ export async function startLauncher(): Promise<{ ok: boolean; message: string }>
   }
 }
 
-export async function getLauncherInfo(): Promise<{
+export interface LauncherInfo {
   projectRoot: string
   pythonPath: string
   hasProject: boolean
-} | null> {
+  hasPython: boolean
+}
+
+export async function getLauncherInfo(): Promise<LauncherInfo | null> {
   if (!isTauri()) return null
   try {
     const { invoke } = await import('@tauri-apps/api/core')
-    return await invoke<{ projectRoot: string; pythonPath: string; hasProject: boolean }>('get_launcher_info')
+    return await invoke<LauncherInfo>('get_launcher_info')
+  } catch {
+    return null
+  }
+}
+
+export interface LauncherDiagnosis {
+  projectRoot: { ok: boolean; path?: string; reason?: string; launcherMain?: string; launcherMainExists?: boolean }
+  pythonPath: { ok: boolean; path?: string; reason?: string; exists?: boolean }
+  launcherPort: number
+  launcherRunning: boolean
+  envVars: Record<string, string>
+  wherePython: { success: boolean; paths?: string[]; error?: string }
+  currentExe: string
+  currentDir: string
+}
+
+export async function diagnoseLauncher(): Promise<LauncherDiagnosis | null> {
+  if (!isTauri()) return null
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return await invoke<LauncherDiagnosis>('diagnose_launcher')
   } catch {
     return null
   }
