@@ -18,9 +18,23 @@ LOG_DIR.mkdir(exist_ok=True)
 # Python 解释器路径，可通过环境变量覆盖；未设置时使用当前运行时的解释器
 PYTHON = os.environ.get("PYTHON_PATH", sys.executable)
 
+
+# ---------------------------------------------------------------------------
+#  .env 加载（从项目根目录读取，不覆盖已有环境变量）
+# ---------------------------------------------------------------------------
+
+from shared.dotenv import load_dotenv as _load_dotenv
+
+_load_dotenv(PROJECT_ROOT / ".env")
+
 # ---------------------------------------------------------------------------
 #  服务定义
 # ---------------------------------------------------------------------------
+
+_auth_env = {}
+_admin_key = os.environ.get("ADMIN_KEY", "")
+if _admin_key:
+    _auth_env["ADMIN_KEY"] = _admin_key
 
 SERVICES = {
     "auth": {
@@ -28,6 +42,7 @@ SERVICES = {
         "script": str(PROJECT_ROOT / "auth" / "server.py"),
         "args": [],
         "port": 8100,
+        "env": _auth_env or None,
     },
     "cellpose": {
         "label": "Cellpose 细胞分割",

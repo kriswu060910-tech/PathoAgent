@@ -1775,6 +1775,16 @@ body {
   animation: login-shake 0.4s ease;
 }
 
+.login-warning {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #d97706;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: var(--radius-sm);
+}
+
 @keyframes login-shake {
   0%, 100% { transform: translateX(0); }
   20% { transform: translateX(-6px); }

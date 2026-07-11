@@ -117,7 +117,7 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
           await new Promise((r) => setTimeout(r, 1000))
           if (launcherPollCancel.current) return
           try {
-            const res = await fetch(`${getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || '/api/launcher'}/status`, { signal: AbortSignal.timeout(2000) })
+            const res = await fetch(`${getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || 'http://localhost:8099'}/status`, { signal: AbortSignal.timeout(2000) })
             if (res.ok) {
               await refresh()
               showToast('Launcher 已连接', 'success')
@@ -153,7 +153,7 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
           for (let i = 0; i < 30; i++) {
             await new Promise((r) => setTimeout(r, 1000))
             try {
-              const res = await fetch(`${getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || '/api/launcher'}/status`, { signal: AbortSignal.timeout(2000) })
+              const res = await fetch(`${getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || 'http://localhost:8099'}/status`, { signal: AbortSignal.timeout(2000) })
               if (res.ok) {
                 await refresh()
                 showToast('Launcher 已自动启动', 'success')
@@ -163,8 +163,8 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
           }
           showToast('Launcher 自动启动超时，请手动启动', 'error')
         }
-      } catch {
-        // 静默失败，用户可手动启动
+      } catch (err) {
+        showToast(`Launcher 自动启动失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
       } finally {
         setStartingLauncher(false)
       }

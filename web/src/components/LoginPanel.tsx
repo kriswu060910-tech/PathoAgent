@@ -9,6 +9,7 @@ export function LoginPanel() {
   const [displayName, setDisplayName] = useState('')
   const [adminKey, setAdminKey] = useState('')
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,6 +31,7 @@ export function LoginPanel() {
       return
     }
 
+    setWarning('')
     setIsSubmitting(true)
     try {
       const result = isRegister
@@ -38,6 +40,8 @@ export function LoginPanel() {
 
       if (!result.ok) {
         setError(result.error || '操作失败')
+      } else if ('warning' in result && result.warning) {
+        setWarning(result.warning)
       }
     } catch {
       setError('操作失败，请重试')
@@ -49,6 +53,7 @@ export function LoginPanel() {
   const switchMode = () => {
     setIsRegister(!isRegister)
     setError('')
+    setWarning('')
   }
 
   return (
@@ -64,6 +69,7 @@ export function LoginPanel() {
           <h2>{isRegister ? '创建账户' : '登录'}</h2>
 
           {error && <div className="login-error">{error}</div>}
+          {warning && <div className="login-warning">{warning}</div>}
 
           <div className="login-field">
             <label>用户名</label>

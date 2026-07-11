@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs::File;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::Manager;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -187,12 +189,27 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
         let _ = std::fs::remove_file(&lock_path);
     }
 
-    let child = std::process::Command::new(&canonical_python)
-        .args(["-m", "launcher.main", "--auto-start"])
-        .current_dir(&canonical_root)
-        .creation_flags(0x00000008) // DETACHED_PROCESS
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+    let log_dir = canonical_root.join("launcher").join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    let mut cmd = std::process::Command::new(&canonical_python);
+    cmd.args(["-m", "launcher.main", "--auto-start"])
+        .current_dir(&canonical_root);
+
+    if cfg!(debug_assertions) {
+        cmd.stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
+    } else {
+        cmd.stdout(std::process::Stdio::null());
+        let err_file = File::create(log_dir.join("launcher-stderr.log"))
+            .map_err(|e| format!("创建日志文件失败: {}", e))?;
+        cmd.stderr(err_file);
+    }
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x00000008); // DETACHED_PROCESS
+
+    let child = cmd
         .spawn()
         .map_err(|e| format!("启动失败: {}", e))?;
 
@@ -294,6 +311,26 @@ fn main() {
             get_launcher_info,
             diagnose_launcher,
         ])
+        .setup(|app| {
+            let state = app.state::<LauncherState>();
+            if !state.project_root.is_empty() && !state.python_path.is_empty() {
+                if let Err(e) = spawn_launcher(&*state) {
+                    let msg = format!("[Tauri] 自动启动 Launcher 失败: {}\n", e);
+                    if let Ok(root) = std::fs::canonicalize(&state.project_root) {
+                        let log_path = root.join("launcher").join("logs").join("tauri-setup.log");
+                        let _ = std::fs::create_dir_all(log_path.parent().unwrap());
+                        use std::io::Write;
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true).append(true).open(&log_path)
+                        {
+                            let _ = f.write_all(msg.as_bytes());
+                        }
+                    }
+                    eprintln!("{}", msg.trim_end());
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

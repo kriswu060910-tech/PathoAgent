@@ -27,6 +27,7 @@ class Service:
     script: Path
     args: list[str]
     port: int
+    env: dict[str, str] | None = None
 
     @property
     def log_path(self) -> Path:
@@ -58,6 +59,7 @@ class ServiceManager:
                 script=Path(cfg["script"]),
                 args=cfg["args"],
                 port=cfg["port"],
+                env=cfg.get("env"),
             )
             for name, cfg in SERVICES.items()
         }
@@ -154,6 +156,14 @@ class ServiceManager:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _build_env(svc: Service) -> dict[str, str] | None:
+        """合并当前环境变量与服务自定义变量；无自定义时返回 None。"""
+        if not svc.env:
+            return None
+        merged = {**os.environ, **svc.env}
+        return merged
+
+    @staticmethod
     def _module_args(svc: Service) -> list[str]:
         """构造服务启动命令。
 
@@ -185,6 +195,9 @@ class ServiceManager:
             "stdout": log_file,
             "stderr": subprocess.STDOUT,
         }
+        env = self._build_env(svc)
+        if env is not None:
+            popen_kwargs["env"] = env
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
@@ -251,6 +264,9 @@ class ServiceManager:
                 continue
             log_file = self._open_log(svc)
             popen_kwargs: dict = {"stdout": log_file, "stderr": subprocess.STDOUT}
+            env = self._build_env(svc)
+            if env is not None:
+                popen_kwargs["env"] = env
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
             proc = subprocess.Popen(self._module_args(svc), **popen_kwargs)

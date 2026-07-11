@@ -13,7 +13,7 @@ interface ServiceInfo {
 type Services = Record<string, ServiceInfo>
 
 function getLauncherUrl(): string {
-  return getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || '/api/launcher'
+  return getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || 'http://localhost:8099'
 }
 
 const DEFAULT_SERVICES: Services = {

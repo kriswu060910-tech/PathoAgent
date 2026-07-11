@@ -8,6 +8,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "auth.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
+
+from shared.dotenv import load_dotenv as _load_dotenv
+
+_load_dotenv(PROJECT_ROOT / ".env")
+
 DEFAULT_HOST = os.environ.get("AUTH_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("AUTH_PORT", "8100"))
 

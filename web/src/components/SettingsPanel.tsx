@@ -206,7 +206,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 </p>
                 {field('病理分析后端', 'pathoApiUrl', '/api/patho')}
                 {field('Cellpose 后端', 'cellposeApiUrl', '/api/cellpose')}
-                {field('Launcher 管理器', 'launcherApiUrl', '/api/launcher')}
+                {field('Launcher 管理器', 'launcherApiUrl', 'http://localhost:8099')}
                 {field('认证服务', 'authApiUrl', '/api/auth')}
               </div>
             )}
