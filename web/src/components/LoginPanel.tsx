@@ -40,8 +40,9 @@ export function LoginPanel() {
 
       if (!result.ok) {
         setError(result.error || '操作失败')
-      } else if ('warning' in result && result.warning) {
-        setWarning(result.warning)
+      } else {
+        const w = (result as { warning?: string }).warning
+        if (w) setWarning(w)
       }
     } catch {
       setError('操作失败，请重试')
