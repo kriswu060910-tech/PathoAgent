@@ -256,9 +256,9 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
                     <summary>诊断结果</summary>
                     <div className="service-diag-content">
                       <DiagRow label="项目目录" ok={diagnosis.projectRoot.ok}
-                        detail={diagnosis.projectRoot.ok ? diagnosis.projectRoot.path : (diagnosis.projectRoot.reason || '未找到')} />
+                        detail={diagnosis.projectRoot.ok ? (diagnosis.projectRoot.path || '') : (diagnosis.projectRoot.reason || '未找到')} />
                       <DiagRow label="Python 路径" ok={diagnosis.pythonPath.ok}
-                        detail={diagnosis.pythonPath.ok ? diagnosis.pythonPath.path : (diagnosis.pythonPath.reason || '未找到')} />
+                        detail={diagnosis.pythonPath.ok ? (diagnosis.pythonPath.path || '') : (diagnosis.pythonPath.reason || '未找到')} />
                       <DiagRow label="Launcher 端口" ok={diagnosis.launcherRunning}
                         detail={`:${diagnosis.launcherPort} ${diagnosis.launcherRunning ? '(已运行)' : '(未响应)'}`} />
                       {diagnosis.wherePython.paths && diagnosis.wherePython.paths.length > 0 && (

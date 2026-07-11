@@ -270,7 +270,7 @@ function AdminModal({ modal, onClose, onDone, showToast }: {
     <div className="admin-modal-overlay" onClick={onClose}>
       <div className="admin-modal" onClick={e => e.stopPropagation()}>
         {modal.type === 'reset-password' && (
-          <ResetPasswordForm user={modal.user} onClose={onClose} onDone={onDone} showToast={showToast} />
+          <ResetPasswordForm user={modal.user} onClose={onClose} showToast={showToast} />
         )}
         {modal.type === 'edit-name' && (
           <EditNameForm user={modal.user} onClose={onClose} onDone={onDone} showToast={showToast} />
@@ -283,8 +283,8 @@ function AdminModal({ modal, onClose, onDone, showToast }: {
   )
 }
 
-function ResetPasswordForm({ user, onClose, onDone, showToast }: {
-  user: UserInfo; onClose: () => void; onDone: () => void
+function ResetPasswordForm({ user, onClose, showToast }: {
+  user: UserInfo; onClose: () => void
   showToast: (msg: string, isError?: boolean) => void
 }) {
   const [pw, setPw] = useState('')
