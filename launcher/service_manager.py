@@ -156,11 +156,15 @@ class ServiceManager:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_env(svc: Service) -> dict[str, str] | None:
-        """合并当前环境变量与服务自定义变量；无自定义时返回 None。"""
-        if not svc.env:
-            return None
-        merged = {**os.environ, **svc.env}
+    def _build_env(svc: Service) -> dict[str, str]:
+        """合并当前环境变量、PYTHONPATH（含项目根目录）与服务自定义变量。"""
+        merged = dict(os.environ)
+        root = str(PROJECT_ROOT)
+        existing = merged.get("PYTHONPATH", "")
+        if root not in existing.split(os.pathsep):
+            merged["PYTHONPATH"] = root + (os.pathsep + existing if existing else "")
+        if svc.env:
+            merged.update(svc.env)
         return merged
 
     @staticmethod
