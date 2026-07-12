@@ -24,9 +24,11 @@ fn check_port(port: u16) -> bool {
 
 /// 检查 PID 是否仍在运行
 fn is_pid_alive(pid: u32) -> bool {
-    std::process::Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {}", pid), "/NH"])
-        .output()
+    let mut cmd = std::process::Command::new("tasklist");
+    cmd.args(["/FI", &format!("PID eq {}", pid), "/NH"]);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    cmd.output()
         .map(|o| o.status.success() && !o.stdout.is_empty())
         .unwrap_or(false)
 }
@@ -117,27 +119,39 @@ fn resolve_python_path() -> String {
     }
 
     // 3. 通过 where 命令查找
-    if let Ok(output) = std::process::Command::new("where").arg("python").output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout);
-            for line in path.lines() {
-                let trimmed = line.trim();
-                // 跳过 WindowsApps 下的 store stub
-                if !trimmed.is_empty() && !trimmed.contains("WindowsApps") {
-                    return trimmed.to_string();
+    {
+        let mut cmd = std::process::Command::new("where");
+        cmd.arg("python");
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        if let Ok(output) = cmd.output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout);
+                for line in path.lines() {
+                    let trimmed = line.trim();
+                    // 跳过 WindowsApps 下的 store stub
+                    if !trimmed.is_empty() && !trimmed.contains("WindowsApps") {
+                        return trimmed.to_string();
+                    }
                 }
             }
         }
     }
 
     // 4. 最后尝试 conda where
-    if let Ok(output) = std::process::Command::new("conda").args(["run", "which", "python"]).output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout);
-            if let Some(first) = path.lines().next() {
-                let trimmed = first.trim();
-                if !trimmed.is_empty() {
-                    return trimmed.to_string();
+    {
+        let mut cmd = std::process::Command::new("conda");
+        cmd.args(["run", "which", "python"]);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        if let Ok(output) = cmd.output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout);
+                if let Some(first) = path.lines().next() {
+                    let trimmed = first.trim();
+                    if !trimmed.is_empty() {
+                        return trimmed.to_string();
+                    }
                 }
             }
         }
@@ -237,7 +251,7 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
     }
 
     #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x00000008); // DETACHED_PROCESS
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
     let child = cmd
         .spawn()
@@ -310,10 +324,13 @@ fn diagnose_launcher(state: tauri::State<'_, LauncherState>) -> serde_json::Valu
     });
 
     // 检查 where python 的结果
-    let where_python = std::process::Command::new("where")
-        .arg("python")
-        .output()
-        .map(|o| {
+    let where_python = {
+        let mut cmd = std::process::Command::new("where");
+        cmd.arg("python");
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        cmd.output()
+    }.map(|o| {
             let stdout = String::from_utf8_lossy(&o.stdout).to_string();
             serde_json::json!({
                 "success": o.status.success(),

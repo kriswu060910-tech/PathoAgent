@@ -19,7 +19,15 @@ API 端点：
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+
+# 确保本地模块（config, analysis 等）可被导入（兼容 python -m 和直接运行两种模式）
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+# 项目根目录（供 shared 等顶层包）
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 # 启动自检：检查关键依赖
 _missing = []
@@ -77,7 +85,19 @@ _model_lock = asyncio.Lock()
 
 def load_model(model_type: str):
     global model
-    from cellpose.models import CellposeModel
+
+    # 本地 cellpose/ 目录会遮蔽 pip 安装的 cellpose 包，
+    # 临时移除相关路径条目并清除缓存模块后重新导入
+    _saved_path = sys.path[:]
+    sys.path = [p for p in sys.path if p not in (_SCRIPT_DIR, _PROJECT_ROOT)]
+    for _key in list(sys.modules):
+        if _key == "cellpose" or _key.startswith("cellpose."):
+            del sys.modules[_key]
+
+    try:
+        from cellpose.models import CellposeModel
+    finally:
+        sys.path = _saved_path
 
     gpu = torch.cuda.is_available()
     logger.info(f"Loading model: {model_type} (GPU={gpu}) ...")

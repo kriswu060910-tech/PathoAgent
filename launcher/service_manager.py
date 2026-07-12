@@ -82,30 +82,29 @@ class ServiceManager:
         return self._services[name]
 
     async def status(self) -> dict[str, dict]:
-        """只读查询所有服务状态，不修改内部进程表。"""
-        async with self._lock:
-            names = list(self._services.keys())
-            ports = [self._services[name].port for name in names]
-            health_results = await asyncio.gather(
-                *(self._is_port_open(port) for port in ports)
-            )
+        """只读查询所有服务状态，不修改内部进程表（不加锁，避免阻塞 start 期间的轮询）。"""
+        names = list(self._services.keys())
+        ports = [self._services[name].port for name in names]
+        health_results = await asyncio.gather(
+            *(self._is_port_open(port) for port in ports)
+        )
 
-            result = {}
-            for name, healthy in zip(names, health_results):
-                svc = self._services[name]
-                handle = self._processes.get(name)
-                alive = handle is not None and handle.proc.poll() is None
-                crashed = handle is not None and handle.proc.poll() is not None
+        result = {}
+        for name, healthy in zip(names, health_results):
+            svc = self._services[name]
+            handle = self._processes.get(name)
+            alive = handle is not None and handle.proc.poll() is None
+            crashed = handle is not None and handle.proc.poll() is not None
 
-                result[name] = {
-                    "label": svc.label,
-                    "running": alive or healthy,
-                    "healthy": healthy,
-                    "crashed": crashed,
-                    "exit_code": handle.proc.returncode if crashed else None,
-                    "port": svc.port,
-                }
-            return result
+            result[name] = {
+                "label": svc.label,
+                "running": alive or healthy,
+                "healthy": healthy,
+                "crashed": crashed,
+                "exit_code": handle.proc.returncode if crashed else None,
+                "port": svc.port,
+            }
+        return result
 
     def read_logs(self, name: str, lines: int = 50) -> dict:
         """读取指定服务的最近 N 行日志。"""
@@ -191,18 +190,67 @@ class ServiceManager:
         return [PYTHON, "-u", str(svc.script), *svc.args]
 
     async def start(self, name: str, wait: bool = True, timeout_seconds: int = 120) -> dict:
-        """启动指定服务；若已运行则直接返回成功。"""
-        async with self._lock:
-            return await self._start_unlocked(name, wait, timeout_seconds)
+        """启动指定服务；若已运行则直接返回成功。
 
-    async def _start_unlocked(
-        self, name: str, wait: bool = True, timeout_seconds: int = 120
-    ) -> dict:
-        """在锁保护下启动指定服务。"""
+        进程创建后立即释放锁再轮询健康检查，避免阻塞 /status 等端点。
+        """
+        svc = self.get(name)
+
+        # --- 阶段 1：加锁创建进程 ---
+        async with self._lock:
+            handle = self._processes.get(name)
+
+            # 清理旧进程引用
+            if handle is not None and handle.proc.poll() is not None:
+                self._cleanup_finished(name)
+                handle = None
+
+            if handle is not None and handle.proc.poll() is None:
+                return {"message": f"{svc.label} 已在运行"}
+
+            log_file = self._open_log(svc)
+            popen_kwargs: dict = {
+                "stdout": log_file,
+                "stderr": subprocess.STDOUT,
+            }
+            env = self._build_env(svc)
+            if env is not None:
+                popen_kwargs["env"] = env
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = (
+                    subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000  # CREATE_NO_WINDOW
+                )
+
+            proc = subprocess.Popen(
+                self._module_args(svc),
+                **popen_kwargs,
+            )
+            self._processes[name] = _ProcessHandle(proc, log_file)
+            logger.info(f"启动 {svc.label} (pid={proc.pid}), 日志: {svc.log_path}")
+
+            if not wait:
+                return {"message": f"{svc.label} 正在启动中"}
+
+        # --- 阶段 2：无锁轮询端口就绪 ---
+        for _ in range(timeout_seconds):
+            if await self._is_port_open(svc.port):
+                return {"message": f"{svc.label} 启动成功"}
+            if proc.poll() is not None:
+                return {
+                    "message": (
+                        f"{svc.label} 启动失败（exit code {proc.returncode}），"
+                        "请查看日志"
+                    )
+                }
+            await asyncio.sleep(1)
+
+        return {"message": f"{svc.label} 正在启动中，模型加载可能需要更长时间"}
+
+    async def _start_unlocked(self, name: str, wait: bool = False, _timeout_seconds: int = 120) -> dict:
+        """在锁保护下创建服务进程（不轮询，供 start_all 使用）。"""
         svc = self.get(name)
         handle = self._processes.get(name)
 
-        # 清理旧进程引用
         if handle is not None and handle.proc.poll() is not None:
             self._cleanup_finished(name)
             handle = None
@@ -228,26 +276,8 @@ class ServiceManager:
             **popen_kwargs,
         )
         self._processes[name] = _ProcessHandle(proc, log_file)
-
         logger.info(f"启动 {svc.label} (pid={proc.pid}), 日志: {svc.log_path}")
-
-        if not wait:
-            return {"message": f"{svc.label} 正在启动中"}
-
-        # 等待端口就绪
-        for _ in range(timeout_seconds):
-            if await self._is_port_open(svc.port):
-                return {"message": f"{svc.label} 启动成功"}
-            if proc.poll() is not None:
-                return {
-                    "message": (
-                        f"{svc.label} 启动失败（exit code {proc.returncode}），"
-                        "请查看日志"
-                    )
-                }
-            await asyncio.sleep(1)
-
-        return {"message": f"{svc.label} 正在启动中，模型加载可能需要更长时间"}
+        return {"message": f"{svc.label} 正在启动中"}
 
     async def stop(self, name: str) -> dict:
         """停止指定服务。"""
@@ -274,6 +304,8 @@ class ServiceManager:
     async def start_all(self, delay_seconds: float = 1.0) -> None:
         """后台启动所有未运行的服务（用于 --auto-start）。"""
         await asyncio.sleep(delay_seconds)
+
+        # --- 阶段 1：加锁创建进程 ---
         async with self._lock:
             started_names: list[str] = []
             for name, svc in self._services.items():
@@ -285,39 +317,39 @@ class ServiceManager:
                 await self._start_unlocked(name, wait=False)
                 started_names.append(name)
 
-            if not started_names:
-                return
+        if not started_names:
+            return
 
-            # 轮询等待服务就绪（模型加载可能需要 30 秒以上）
-            healthy_set: set[str] = set()
-            max_wait = 60
-            for elapsed in range(0, max_wait, 5):
-                if elapsed > 0:
-                    await asyncio.sleep(5)
-                pending = [n for n in started_names if n not in healthy_set]
-                if not pending:
-                    break
-                ports = [self._services[n].port for n in pending]
-                results = await asyncio.gather(
-                    *(self._is_port_open(p) for p in ports)
-                )
-                for name, ok in zip(pending, results):
-                    if ok:
+        # --- 阶段 2：无锁轮询端口就绪 ---
+        healthy_set: set[str] = set()
+        max_wait = 60
+        for elapsed in range(0, max_wait, 5):
+            if elapsed > 0:
+                await asyncio.sleep(5)
+            pending = [n for n in started_names if n not in healthy_set]
+            if not pending:
+                break
+            ports = [self._services[n].port for n in pending]
+            results = await asyncio.gather(
+                *(self._is_port_open(p) for p in ports)
+            )
+            for name, ok in zip(pending, results):
+                if ok:
+                    healthy_set.add(name)
+                    logger.info(f"{self._services[name].label} 健康检查通过 ({elapsed + 5}s)")
+                else:
+                    handle = self._processes.get(name)
+                    if handle and handle.proc.poll() is not None:
+                        logger.error(
+                            f"{self._services[name].label} 启动失败 "
+                            f"(exit code {handle.proc.returncode})，请查看日志"
+                        )
+                        self._cleanup_finished(name)
                         healthy_set.add(name)
-                        logger.info(f"{self._services[name].label} 健康检查通过 ({elapsed + 5}s)")
-                    else:
-                        handle = self._processes.get(name)
-                        if handle and handle.proc.poll() is not None:
-                            logger.error(
-                                f"{self._services[name].label} 启动失败 "
-                                f"(exit code {handle.proc.returncode})，请查看日志"
-                            )
-                            self._cleanup_finished(name)
-                            healthy_set.add(name)  # 标记为已完成，不再轮询
 
-            for name in started_names:
-                if name not in healthy_set:
-                    logger.warning(f"{self._services[name].label} 尚未通过健康检查，继续后台加载")
+        for name in started_names:
+            if name not in healthy_set:
+                logger.warning(f"{self._services[name].label} 尚未通过健康检查，继续后台加载")
 
     def shutdown(self) -> None:
         """停止所有托管的服务进程。"""
@@ -355,7 +387,8 @@ class ServiceManager:
             if proc.poll() is None:
                 logger.warning(f"进程 {proc.pid} 未能在 5 秒内终止，执行 taskkill")
                 subprocess.run(
-                    ["taskkill", "/T", "/F", "/PID", str(proc.pid)], check=False
+                    ["taskkill", "/T", "/F", "/PID", str(proc.pid)], check=False,
+                    creationflags=0x08000000 if sys.platform == "win32" else 0,
                 )
                 try:
                     proc.wait(timeout=3)

@@ -59,7 +59,7 @@ def _run(cmd: list[str], timeout: int = 10) -> tuple[bool, str]:
     try:
         r = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+            creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000) if sys.platform == "win32" else 0,
         )
         return r.returncode == 0, r.stdout
     except Exception:
@@ -310,5 +310,5 @@ def install_packages(python_path: str, packages: list[str]) -> subprocess.Popen:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000) if sys.platform == "win32" else 0,
     )
