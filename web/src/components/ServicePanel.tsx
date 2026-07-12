@@ -103,6 +103,8 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(null)
   const autoStartAttempted = useRef(false)
+  const wasConnectedRef = useRef(false)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
   const { poll: pollLauncher, cancel: cancelLauncherPoll } = useLauncherStatusPoll()
   const names = Object.keys(services)
 
@@ -197,7 +199,14 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
     }
   }
 
-  // 应用启动时自动拉起 Launcher
+  // 跟踪连接状态变化
+  useEffect(() => {
+    if (connected) {
+      wasConnectedRef.current = true
+    }
+  }, [connected])
+
+  // 应用启动时自动拉起 Launcher（最多重试 3 次）
   useEffect(() => {
     if (connected || autoStartAttempted.current || !total) return
     autoStartAttempted.current = true
@@ -205,17 +214,20 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
     const autoStart = async () => {
       setStartingLauncher(true)
       try {
-        const result = await startLauncher()
-        if (result.ok) {
-          const { ok, aborted } = await pollLauncher(async () => {
-            await refresh()
-            showToast('Launcher 已自动启动', 'success')
-          })
-          if (aborted) return
-          if (!ok) {
-            showToast('Launcher 自动启动超时，请手动启动', 'error')
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const result = await startLauncher()
+          if (result.ok) {
+            const { ok, aborted } = await pollLauncher(async () => {
+              await refresh()
+              showToast('Launcher 已自动启动', 'success')
+            })
+            if (ok || aborted) return
+          }
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, attempt * 3000))
           }
         }
+        showToast('Launcher 自动启动失败，请手动启动', 'error')
       } catch (err) {
         showToast(`Launcher 自动启动失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
       } finally {
@@ -226,6 +238,40 @@ export function ServicePanel({ onOpenSettings }: ServicePanelProps) {
     const timer = setTimeout(autoStart, 1500)
     return () => clearTimeout(timer)
   }, [connected, total, pollLauncher, refresh, showToast])
+
+  // 断线自动重连：之前已连接 → 现在断开 → 等待 8 秒确认非临时波动 → 自动重启
+  useEffect(() => {
+    if (!connected && wasConnectedRef.current) {
+      reconnectTimerRef.current = setTimeout(async () => {
+        if (wasConnectedRef.current) {
+          wasConnectedRef.current = false
+          setStartingLauncher(true)
+          try {
+            const result = await startLauncher()
+            if (result.ok) {
+              await pollLauncher(async () => {
+                await refresh()
+                showToast('Launcher 已自动重连', 'success')
+              })
+            }
+          } catch { /* ignore */ } finally {
+            setStartingLauncher(false)
+          }
+        }
+      }, 8000)
+    } else {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+    }
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+    }
+  }, [connected, pollLauncher, refresh, showToast])
 
   if (!total) return null
 

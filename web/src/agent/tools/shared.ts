@@ -1,4 +1,5 @@
 import type { ImageAttachment } from '../vision'
+import { getSettings } from '../../stores/settings'
 
 export type GetImages = () => ImageAttachment[]
 
@@ -32,36 +33,65 @@ export function sanitizeHeaders(headers: Record<string, string>): Record<string,
   return cleaned
 }
 
-/** POST JSON 请求，统一处理错误响应。默认 30 秒超时。 */
+/** 从 launcher /status 获取最新 service_api_key */
+async function refreshServiceKey(): Promise<string | null> {
+  try {
+    const launcherUrl = getSettings().launcherApiUrl || import.meta.env.VITE_LAUNCHER_API_URL || 'http://localhost:8099'
+    const res = await fetch(`${launcherUrl}/status`, { signal: AbortSignal.timeout(3000) })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.service_api_key) {
+        setServiceKey(data.service_api_key as string)
+        return data.service_api_key as string
+      }
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+/** POST JSON 请求，统一处理错误响应。默认 30 秒超时。401 时自动刷新 key 重试一次。 */
 export async function apiPost<T>(
   url: string,
   body: Record<string, unknown>,
   extraHeaders?: Record<string, string>,
   timeoutMs = 30_000,
 ): Promise<T> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders }
-  if (_serviceKey && isLocalBackendUrl(url)) headers['Authorization'] = `Bearer ${_serviceKey}`
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: sanitizeHeaders(headers),
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`API error ${res.status}: ${text}`)
+  async function doRequest(): Promise<T> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders }
+    if (_serviceKey && isLocalBackendUrl(url)) headers['Authorization'] = `Bearer ${_serviceKey}`
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: sanitizeHeaders(headers),
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(`API error ${res.status}: ${text}`)
+      }
+      return res.json() as Promise<T>
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error(`请求超时 (${timeoutMs / 1000}s)：${url}`)
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
     }
-    return res.json() as Promise<T>
+  }
+
+  try {
+    return await doRequest()
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(`请求超时 (${timeoutMs / 1000}s)：${url}`)
+    // 401 时自动刷新 serviceKey 重试一次
+    if (err instanceof Error && err.message.includes('401') && isLocalBackendUrl(url)) {
+      const newKey = await refreshServiceKey()
+      if (newKey) return await doRequest()
     }
     throw err
-  } finally {
-    clearTimeout(timer)
   }
 }
 

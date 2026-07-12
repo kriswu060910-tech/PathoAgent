@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 #[cfg(target_os = "windows")]
@@ -10,6 +11,37 @@ struct LauncherState {
     project_root: String,
     python_path: String,
     starting: AtomicBool,
+}
+
+/// TCP 端口连通性检查
+fn check_port(port: u16) -> bool {
+    std::net::TcpStream::connect_timeout(
+        &format!("127.0.0.1:{}", port).parse().unwrap(),
+        Duration::from_millis(500),
+    )
+    .is_ok()
+}
+
+/// 检查 PID 是否仍在运行
+fn is_pid_alive(pid: u32) -> bool {
+    std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+        .output()
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false)
+}
+
+/// spawn 后轮询等待 launcher 端口就绪
+fn verify_launcher_ready(port: u16, timeout_secs: u64) -> bool {
+    let start = Instant::now();
+    let timeout = Duration::from_secs(timeout_secs);
+    while start.elapsed() < timeout {
+        std::thread::sleep(Duration::from_secs(1));
+        if check_port(port) {
+            return true;
+        }
+    }
+    false
 }
 
 fn resolve_project_root() -> String {
@@ -162,12 +194,7 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(8099);
 
-    if std::net::TcpStream::connect_timeout(
-        &format!("127.0.0.1:{}", launcher_port).parse().unwrap(),
-        std::time::Duration::from_millis(500),
-    )
-    .is_ok()
-    {
+    if check_port(launcher_port) {
         return Ok("Launcher 已在运行中".into());
     }
 
@@ -175,12 +202,7 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
     if lock_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&lock_path) {
             if let Ok(pid) = content.trim().parse::<u32>() {
-                let alive = std::process::Command::new("tasklist")
-                    .args(["/FI", &format!("PID eq {}", pid), "/NH"])
-                    .output()
-                    .map(|o| o.status.success() && !o.stdout.is_empty())
-                    .unwrap_or(false);
-                if alive {
+                if is_pid_alive(pid) {
                     return Ok("另一个实例正在启动 Launcher，请稍候...".into());
                 }
             }
@@ -215,6 +237,14 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
         .map_err(|e| format!("启动失败: {}", e))?;
 
     let _ = std::fs::write(&lock_path, child.id().to_string());
+
+    // 等待 launcher 端口就绪，确认进程真正启动成功
+    if !verify_launcher_ready(launcher_port, 10) {
+        return Err(format!(
+            "Launcher 进程已启动 (PID: {}) 但端口 {} 未就绪，请检查 logs/launcher-stderr.log",
+            child.id(), launcher_port
+        ));
+    }
 
     Ok(format!("Launcher 已启动 (PID: {})", child.id()))
 }
@@ -318,19 +348,33 @@ fn main() {
                 && !state.python_path.is_empty()
                 && state.starting.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok()
             {
-                if let Err(e) = spawn_launcher(&*state) {
-                    let msg = format!("[Tauri] 自动启动 Launcher 失败: {}\n", e);
-                    if let Ok(root) = std::fs::canonicalize(&state.project_root) {
-                        let log_path = root.join("launcher").join("logs").join("tauri-setup.log");
-                        let _ = std::fs::create_dir_all(log_path.parent().unwrap());
-                        use std::io::Write;
-                        if let Ok(mut f) = std::fs::OpenOptions::new()
-                            .create(true).append(true).open(&log_path)
-                        {
-                            let _ = f.write_all(msg.as_bytes());
+                let project_root = state.project_root.clone();
+                let state_ref = &*state;
+                // 最多尝试 2 次启动 launcher
+                for attempt in 1..=2 {
+                    match spawn_launcher(state_ref) {
+                        Ok(msg) => {
+                            eprintln!("[Tauri] {}", msg);
+                            break;
+                        }
+                        Err(e) => {
+                            let msg = format!("[Tauri] 自动启动 Launcher 失败 (第{}次): {}\n", attempt, e);
+                            if let Ok(root) = std::fs::canonicalize(&project_root) {
+                                let log_path = root.join("launcher").join("logs").join("tauri-setup.log");
+                                let _ = std::fs::create_dir_all(log_path.parent().unwrap());
+                                use std::io::Write;
+                                if let Ok(mut f) = std::fs::OpenOptions::new()
+                                    .create(true).append(true).open(&log_path)
+                                {
+                                    let _ = f.write_all(msg.as_bytes());
+                                }
+                            }
+                            eprintln!("{}", msg.trim_end());
+                            if attempt < 2 {
+                                std::thread::sleep(Duration::from_secs(3));
+                            }
                         }
                     }
-                    eprintln!("{}", msg.trim_end());
                 }
                 state.starting.store(false, Ordering::SeqCst);
             }

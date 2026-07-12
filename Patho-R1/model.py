@@ -2,6 +2,11 @@
 
 import asyncio
 import gc
+import os
+
+# 强制离线模式：仅使用本地缓存，不联网下载模型
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 import torch
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
@@ -56,8 +61,27 @@ class ModelManager:
     #  加载 / 卸载
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _local_model_available(model_name: str) -> bool:
+        """检查模型是否已缓存在本地（HuggingFace Hub cache 目录）。"""
+        # 如果是本地路径，直接检查
+        if os.path.isdir(model_name):
+            return True
+        # 检查 HF cache: ~/.cache/huggingface/hub/models--{org}--{name}/snapshots/
+        hf_home = os.environ.get("HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface"))
+        cache_dir = os.path.join(hf_home, "hub", "models--" + model_name.replace("/", "--"))
+        snapshots = os.path.join(cache_dir, "snapshots")
+        return os.path.isdir(snapshots) and len(os.listdir(snapshots)) > 0 if os.path.isdir(snapshots) else False
+
     def load(self, model_key: str, quantize: bool = True) -> None:
         model_name = config.MODEL_MAP.get(model_key, config.MODEL_MAP["7b"])
+
+        if not self._local_model_available(model_name):
+            raise RuntimeError(
+                f"本地未找到模型 {model_name}。"
+                f"请先在有网络的环境下运行一次 `python -c \"from transformers import AutoModel; AutoModel.from_pretrained('{model_name}')\"` 下载模型，"
+                f"或通过 huggingface-cli download {model_name} 下载到本地缓存。"
+            )
 
         use_cuda = torch.cuda.is_available()
         use_quant = quantize and use_cuda
