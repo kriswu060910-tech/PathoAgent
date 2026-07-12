@@ -93,7 +93,7 @@ app = FastAPI(title="Cellpose API", version="1.0.0")
 
 _cors_origins = os.environ.get(
     "CELLPOSE_CORS_ORIGINS",
-    "http://localhost:5173,http://localhost:4173,tauri://localhost",
+    "http://localhost:5173,http://localhost:4173,tauri://localhost,http://tauri.localhost",
 )
 allow_origins = [origin.strip() for origin in _cors_origins.split(",") if origin.strip()]
 

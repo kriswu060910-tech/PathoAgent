@@ -28,6 +28,16 @@
     "targets": ["nsis"],
     "icon": [
       "icons/icon.ico"
+    ],
+    "resources": [
+      "../../launcher",
+      "../../auth",
+      "../../cellpose",
+      "../../Patho-R1",
+      "../../shared",
+      "../../shared_image_utils.py",
+      "../../shared_logger.py",
+      "../../.env"
     ]
   }
 }

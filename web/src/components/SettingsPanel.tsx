@@ -218,6 +218,30 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 <h3 className="guide-title">📖 部署指南</h3>
 
                 <div className="guide-block">
+                  <h4>💻 桌面安装包用户（exe）</h4>
+                  <p>桌面安装包已内置前端和全部 Python 后端代码，打开即自动启动 Launcher 及所有后端服务，无需手动操作。</p>
+                  <h5>前提条件</h5>
+                  <ul>
+                    <li>已安装 Miniconda/Anaconda，并创建了 <code>patho</code> 环境（装好所有后端依赖）</li>
+                    <li>Qwen2.5-VL-3B 模型已下载到本地，并配置 <code>PATHO_QWEN_MODEL_PATH</code> 环境变量</li>
+                    <li>NVIDIA GPU 显存 ≥ 8GB，已安装 CUDA 驱动</li>
+                    <li><strong>安装目录须可写</strong>（勿装到 <code>C:\Program Files\</code>，建议 <code>D:\PathoAgent\</code>）</li>
+                  </ul>
+                  <p>启动后如后端未自动运行，检查：</p>
+                  <pre className="guide-code">
+{`# 1. 确认 patho 环境存在
+D:\\miniconda3\\envs\\patho\\python.exe --version
+
+# 2. 查看自动启动日志
+type <安装目录>\\resources\\launcher\\logs\\tauri-setup.log
+type <安装目录>\\resources\\launcher\\logs\\launcher-stderr.log
+
+# 3. 如 Conda 路径不同，设置环境变量
+setx PYTHON_PATH "你的conda路径\\envs\\patho\\python.exe"`}
+                  </pre>
+                </div>
+
+                <div className="guide-block">
                   <h4>🖥️ 环境要求</h4>
                   <ul>
                     <li>GPU：NVIDIA 显卡，显存 ≥ 6GB（推荐 8GB+）</li>

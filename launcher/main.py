@@ -44,7 +44,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",   # Vite dev server
         "http://localhost:4173",   # Vite preview
-        "tauri://localhost",       # Tauri 生产环境
+        "tauri://localhost",       # Tauri 生产环境 (macOS)
+        "http://tauri.localhost",  # Tauri 生产环境 (Windows WebView2)
     ],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],

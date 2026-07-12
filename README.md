@@ -213,6 +213,56 @@ pytest tests/
 
 ---
 
+## 桌面应用部署（Tauri exe 安装包）
+
+桌面安装包内已打包前端和全部 Python 后端代码，安装后打开即自动启动 Launcher 及所有后端服务。
+
+### 前提条件
+
+| 条件 | 说明 |
+|------|------|
+| Conda 环境 | 用户机器须已安装 Miniconda/Anaconda 并创建 `patho` 环境，装好所有后端依赖（见上方"后端服务部署"） |
+| 模型文件 | Qwen2.5-VL-3B 模型须已下载到本地，并通过 `PATHO_QWEN_MODEL_PATH` 环境变量或 `.env` 配置路径 |
+| NVIDIA 驱动 | GPU 显存 ≥ 8GB，已安装 CUDA 驱动 |
+| 安装目录可写 | **不要**安装到 `C:\Program Files\`（默认路径），Launcher 运行时需要写入 `.env`、`logs/` 等文件，请自定义到 `D:\PathoAgent\` 等可写目录 |
+
+> 安装包**不包含** Python 解释器、Conda 环境和模型权重文件——这些体积过大，需用户在目标机器上预先准备好。
+
+### 自动启动机制
+
+应用启动时，Tauri Rust 层按以下顺序定位项目资源和 Python：
+
+1. **项目根目录**：优先检查 `exe所在目录/resources/`（NSIS 安装后 Python 后端代码在此），其次向上遍历 exe 父目录、当前工作目录、常见开发路径等
+2. **Python 解释器**：优先查找 conda `patho` 环境（`D:\miniconda3\envs\patho\python.exe`），其次 base conda、`where python`、`conda run which python`
+3. 两者都找到后，以 `DETACHED_PROCESS` 方式执行 `python -m launcher.main --auto-start`，轮询等待端口 8099 就绪（超时 10 秒），最多重试 2 次
+
+### 安装后目录结构
+
+```
+D:\PathoAgent\                  ← 用户选择的安装目录
+├── PathoAgent.exe              ← Tauri 桌面应用
+└── resources\
+    ├── launcher\               ← Launcher 服务管理器
+    ├── auth\                   ← 用户认证服务
+    ├── cellpose\               ← 细胞分割后端
+    ├── Patho-R1\               ← 病理分析后端
+    ├── shared\                 ← 共享模块
+    ├── shared_image_utils.py
+    ├── shared_logger.py
+    └── .env                    ← 默认配置（首次运行后可写）
+```
+
+### 故障排查
+
+如果桌面应用启动后后端服务未自动运行：
+
+1. 查看 `<安装目录>\resources\launcher\logs\tauri-setup.log` 中的自动启动日志
+2. 查看 `<安装目录>\resources\launcher\logs\launcher-stderr.log` 中的 Launcher 错误输出
+3. 确认 `D:\miniconda3\envs\patho\python.exe` 存在（或设置 `PYTHON_PATH` 环境变量指向正确路径）
+4. 确认安装目录可写（右键目录 → 属性 → 取消"只读"）
+
+---
+
 ## 工具集
 
 | 工具 | 说明 | 依赖 |

@@ -30,7 +30,7 @@ database.init_db()
 
 _cors_origins = os.environ.get(
     "AUTH_CORS_ORIGINS",
-    "http://localhost:5173,http://localhost:4173,tauri://localhost",
+    "http://localhost:5173,http://localhost:4173,tauri://localhost,http://tauri.localhost",
 )
 _allow_origins = [origin.strip() for origin in _cors_origins.split(",") if origin.strip()]
 

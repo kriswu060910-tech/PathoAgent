@@ -52,7 +52,17 @@ fn resolve_project_root() -> String {
         }
     }
 
-    // 2. 可执行文件所在目录向上查找
+    // 2. 打包资源目录（生产环境 NSIS 安装后 resources/ 与 exe 同级）
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let res = dir.join("resources");
+            if res.join("launcher").join("main.py").exists() {
+                return res.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    // 3. 可执行文件所在目录向上查找
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.parent().map(|p| p.to_path_buf());
         while let Some(d) = dir {
@@ -63,14 +73,14 @@ fn resolve_project_root() -> String {
         }
     }
 
-    // 3. 当前工作目录
+    // 4. 当前工作目录
     if let Ok(cwd) = std::env::current_dir() {
         if cwd.join("launcher").join("main.py").exists() {
             return cwd.to_string_lossy().to_string();
         }
     }
 
-    // 4. 常见开发路径
+    // 5. 常见开发路径
     let common_paths = [
         r"D:\agent",
         r"C:\agent",
@@ -84,7 +94,7 @@ fn resolve_project_root() -> String {
         }
     }
 
-    // 5. 用户主目录下查找
+    // 6. 用户主目录下查找
     if let Ok(home) = std::env::var("USERPROFILE") {
         let candidate = std::path::Path::new(&home).join("agent");
         if candidate.join("launcher").join("main.py").exists() {
@@ -103,14 +113,15 @@ fn resolve_python_path() -> String {
         }
     }
 
-    // 2. 常见 conda / Python 路径（Windows）
+    // 2. 常见 conda / Python 路径（Windows）— patho 环境优先
     let common_pythons = [
-        r"D:\miniconda3\python.exe",
         r"D:\miniconda3\envs\patho\python.exe",
-        r"D:\Anaconda3\python.exe",
         r"D:\Anaconda3\envs\patho\python.exe",
-        r"C:\miniconda3\python.exe",
         r"C:\miniconda3\envs\patho\python.exe",
+        r"C:\ProgramData\miniconda3\envs\patho\python.exe",
+        r"D:\miniconda3\python.exe",
+        r"D:\Anaconda3\python.exe",
+        r"C:\miniconda3\python.exe",
         r"C:\ProgramData\miniconda3\python.exe",
     ];
     for p in &common_pythons {
