@@ -12,10 +12,15 @@ def test_analyze_request_defaults():
     assert req.style == "cot"
 
 
-def test_analyze_request_invalid_style_still_accepted():
-    # Pydantic 目前未限制 style 取值，只验证类型
-    req = schemas.AnalyzeRequest(image="abc", style="anything")
-    assert req.style == "anything"
+def test_analyze_request_invalid_style_rejected():
+    # style 仅接受 "cot" 或 "cod"
+    with pytest.raises(ValidationError):
+        schemas.AnalyzeRequest(image="abc", style="anything")
+
+
+def test_analyze_request_valid_cod_style():
+    req = schemas.AnalyzeRequest(image="abc", style="cod")
+    assert req.style == "cod"
 
 
 def test_analyze_request_missing_image_raises():

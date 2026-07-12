@@ -18,7 +18,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
@@ -39,20 +39,33 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Agent Launcher", version="1.0.0", lifespan=lifespan)
+
+_cors_origins = os.environ.get(
+    "LAUNCHER_CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:4173,tauri://localhost,http://tauri.localhost",
+)
+allow_origins = [origin.strip() for origin in _cors_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",   # Vite dev server
-        "http://localhost:4173",   # Vite preview
-        "tauri://localhost",       # Tauri 生产环境 (macOS)
-        "http://tauri.localhost",  # Tauri 生产环境 (Windows WebView2)
-    ],
+    allow_origins=allow_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
 
 _AUTO_START = False
+
+
+def _verify_service_token(request: Request) -> None:
+    """校验 Bearer Token 与 SERVICE_API_KEY 一致，写操作必须。"""
+    import hmac
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "缺少认证令牌")
+    token = auth[7:]
+    if not hmac.compare_digest(token, config.SERVICE_API_KEY):
+        raise HTTPException(403, "认证令牌无效")
 
 
 @app.get("/status")
@@ -71,7 +84,8 @@ async def logs(name: str, lines: int = Query(default=50, ge=1, le=500)):
 
 
 @app.post("/start/{name}")
-async def start(name: str):
+async def start(name: str, request: Request):
+    _verify_service_token(request)
     try:
         return await manager.start(name, timeout_seconds=config.STARTUP_TIMEOUT_SECONDS)
     except KeyError as exc:
@@ -79,7 +93,8 @@ async def start(name: str):
 
 
 @app.post("/stop/{name}")
-async def stop(name: str):
+async def stop(name: str, request: Request):
+    _verify_service_token(request)
     try:
         return await manager.stop(name)
     except KeyError as exc:
@@ -101,7 +116,8 @@ async def setup_environments():
 
 
 @app.post("/setup/select")
-async def setup_select(req: dict):
+async def setup_select(req: dict, request: Request):
+    _verify_service_token(request)
     import subprocess
 
     python_path = req.get("pythonPath", "")
@@ -132,7 +148,8 @@ async def setup_select(req: dict):
 
 
 @app.post("/setup/install")
-async def setup_install(req: dict):
+async def setup_install(req: dict, request: Request):
+    _verify_service_token(request)
     import asyncio
     import re
     python_path = req.get("pythonPath", "")

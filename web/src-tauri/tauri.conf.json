@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:* https://api.deepseek.com https://dashscope.aliyuncs.com https://api.allorigins.win https://api.tavily.com https://google.serper.dev; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* https://api.deepseek.com https://dashscope.aliyuncs.com https://api.siliconflow.cn https://api.openai.com https://api.allorigins.win https://api.tavily.com https://google.serper.dev; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {
@@ -37,7 +37,7 @@
       "../../shared",
       "../../shared_image_utils.py",
       "../../shared_logger.py",
-      "../../.env"
+      "../../.env.example"
     ]
   }
 }

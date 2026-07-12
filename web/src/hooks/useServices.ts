@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSettings } from '../stores/settings'
-import { setServiceKey } from '../agent/tools/shared'
+import { setServiceKey, getServiceKey } from '../agent/tools/shared'
 
 interface ServiceInfo {
   label: string
@@ -190,7 +190,7 @@ export function useServices(enabled = true) {
     try {
       const res = await fetch(`${getLauncherUrl()}/setup/select`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getServiceKey()}` },
         body: JSON.stringify({ pythonPath }),
       })
       const data = await res.json()
@@ -204,7 +204,7 @@ export function useServices(enabled = true) {
     try {
       const res = await fetch(`${getLauncherUrl()}/setup/install`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getServiceKey()}` },
         body: JSON.stringify({ pythonPath, packages }),
       })
       const data = await res.json() as { ok?: boolean; output?: string; detail?: string }

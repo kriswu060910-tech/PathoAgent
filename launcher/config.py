@@ -16,9 +16,17 @@ LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
 # .env 加载必须在读取环境变量之前
+# 首次运行时从 .env.example 复制模板
+_env_file = PROJECT_ROOT / ".env"
+if not _env_file.exists():
+    _example = PROJECT_ROOT / ".env.example"
+    if _example.exists():
+        import shutil
+        shutil.copy2(_example, _env_file)
+
 from shared.dotenv import load_dotenv as _load_dotenv
 
-_load_dotenv(PROJECT_ROOT / ".env")
+_load_dotenv(_env_file)
 
 # Python 解释器路径，可通过环境变量覆盖
 def _resolve_python() -> str:
@@ -42,6 +50,25 @@ def _resolve_python() -> str:
     return sys.executable
 
 PYTHON = _resolve_python()
+
+
+def _save_env_var(key: str, value: str) -> None:
+    """将单个键值对写入项目根目录 .env 文件（更新或追加）。"""
+    env_file = PROJECT_ROOT / ".env"
+    lines: list[str] = []
+    if env_file.exists():
+        lines = env_file.read_text(encoding="utf-8").splitlines()
+    found = False
+    for i, line in enumerate(lines):
+        if line.strip().startswith(f"{key}="):
+            lines[i] = f"{key}={value}"
+            found = True
+            break
+    if not found:
+        lines.append(f"{key}={value}")
+    tmp = env_file.with_suffix(".tmp")
+    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    tmp.replace(env_file)
 
 
 def _read_env_file() -> list[str]:
@@ -103,14 +130,27 @@ def _resolve_service_key() -> str:
 
 SERVICE_API_KEY = _resolve_service_key()
 
+
+def _resolve_admin_key() -> str:
+    """解析管理员密钥；未设置时自动生成并持久化到 .env。"""
+    import secrets
+
+    env = os.environ.get("ADMIN_KEY", "")
+    if env:
+        return env
+
+    key = secrets.token_urlsafe(32)
+    _save_env_var("ADMIN_KEY", key)
+    return key
+
+
+ADMIN_KEY = _resolve_admin_key()
+
 # ---------------------------------------------------------------------------
 #  服务定义
 # ---------------------------------------------------------------------------
 
-_auth_env = {"SERVICE_API_KEY": SERVICE_API_KEY}
-_admin_key = os.environ.get("ADMIN_KEY", "")
-if _admin_key:
-    _auth_env["ADMIN_KEY"] = _admin_key
+_auth_env = {"SERVICE_API_KEY": SERVICE_API_KEY, "ADMIN_KEY": ADMIN_KEY}
 
 SERVICES = {
     "auth": {
@@ -141,16 +181,10 @@ SERVICES = {
 # ---------------------------------------------------------------------------
 
 
-def _int_env(key: str, default: int) -> int:
-    """安全地读取整数类型环境变量，格式错误时返回默认值。"""
-    try:
-        return int(os.environ.get(key, default))
-    except (ValueError, TypeError):
-        return default
-
+from shared import int_env
 
 DEFAULT_HOST = os.environ.get("LAUNCHER_HOST", "127.0.0.1")
-DEFAULT_PORT = _int_env("LAUNCHER_PORT", 8099)
+DEFAULT_PORT = int_env("LAUNCHER_PORT", 8099)
 
 # 启动后等待后端服务就绪的最大秒数
-STARTUP_TIMEOUT_SECONDS = _int_env("LAUNCHER_STARTUP_TIMEOUT", 120)
+STARTUP_TIMEOUT_SECONDS = int_env("LAUNCHER_STARTUP_TIMEOUT", 120)

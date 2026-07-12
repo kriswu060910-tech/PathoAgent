@@ -55,7 +55,7 @@ def _login_key(req) -> str:
     return f"login:{client_ip(req)}"
 
 
-# 登录端点限流：每账号每 15 分钟最多 5 次失败
+# 登录端点限流：每 IP 每 15 分钟最多 5 次登录尝试
 _login_limiter = RateLimiter(
     max_requests=5,
     window_seconds=15 * 60,

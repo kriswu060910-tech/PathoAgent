@@ -5,6 +5,8 @@
  * 浏览器环境下所有函数安全返回 false / 空值。
  */
 
+import { getServiceKey } from '../agent/tools/shared'
+
 export function isTauri(): boolean {
   return '__TAURI__' in window
 }
@@ -107,7 +109,7 @@ export async function selectPythonEnv(pythonPath: string): Promise<{ ok: boolean
     const baseUrl = getSettings().launcherApiUrl || 'http://localhost:8099'
     const res = await fetch(`${baseUrl}/setup/select`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getServiceKey()}` },
       body: JSON.stringify({ pythonPath }),
     })
     const data = await res.json()

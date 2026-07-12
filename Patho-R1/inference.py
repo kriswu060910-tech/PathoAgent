@@ -127,7 +127,7 @@ async def run_inference(
             )
         except torch.cuda.OutOfMemoryError as exc:
             logger.error(f"GPU OOM: {exc}")
-            raise HTTPException(status_code=500, detail=f"GPU 显存不足: {exc}") from exc
+            raise HTTPException(status_code=500, detail="GPU 显存不足，请稍后重试或减小图片尺寸") from exc
         except Exception as exc:
             logger.exception("推理失败")
             raise HTTPException(status_code=500, detail="推理失败，请检查日志") from exc

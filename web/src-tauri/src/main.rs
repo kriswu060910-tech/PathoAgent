@@ -80,21 +80,7 @@ fn resolve_project_root() -> String {
         }
     }
 
-    // 5. 常见开发路径
-    let common_paths = [
-        r"D:\agent",
-        r"C:\agent",
-        r"D:\Projects\agent",
-        r"C:\Projects\agent",
-    ];
-    for p in &common_paths {
-        let path = std::path::Path::new(p);
-        if path.join("launcher").join("main.py").exists() {
-            return p.to_string();
-        }
-    }
-
-    // 6. 用户主目录下查找
+    // 5. 用户主目录下查找
     if let Ok(home) = std::env::var("USERPROFILE") {
         let candidate = std::path::Path::new(&home).join("agent");
         if candidate.join("launcher").join("main.py").exists() {
@@ -210,15 +196,25 @@ fn spawn_launcher(state: &LauncherState) -> Result<String, String> {
     }
 
     let lock_path = canonical_root.join(".launcher_lock");
-    if lock_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&lock_path) {
-            if let Ok(pid) = content.trim().parse::<u32>() {
-                if is_pid_alive(pid) {
-                    return Ok("另一个实例正在启动 Launcher，请稍候...".into());
+    // 原子创建锁文件，避免 TOCTOU 竞态
+    match std::fs::OpenOptions::new().create_new(true).write(true).open(&lock_path) {
+        Ok(_) => {}
+        Err(_) => {
+            // 锁文件已存在，检查持有者是否存活
+            if let Ok(content) = std::fs::read_to_string(&lock_path) {
+                if let Ok(pid) = content.trim().parse::<u32>() {
+                    if is_pid_alive(pid) {
+                        return Ok("另一个实例正在启动 Launcher，请稍候...".into());
+                    }
                 }
             }
+            // 持有者已死，清除旧锁并重试
+            let _ = std::fs::remove_file(&lock_path);
+            match std::fs::OpenOptions::new().create_new(true).write(true).open(&lock_path) {
+                Ok(_) => {}
+                Err(_) => return Ok("另一个实例正在启动 Launcher，请稍候...".into()),
+            }
         }
-        let _ = std::fs::remove_file(&lock_path);
     }
 
     let log_dir = canonical_root.join("launcher").join("logs");

@@ -119,7 +119,7 @@ async def value_error_handler(_request: Request, exc: ValueError):
     logger.warning(f"请求参数错误: {exc}")
     return JSONResponse(
         status_code=400,
-        content={"detail": str(exc)},
+        content={"detail": "请求参数错误，请检查输入"},
     )
 
 

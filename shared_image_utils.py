@@ -56,13 +56,8 @@ def decode_base64_to_pil(image_b64: str) -> Image.Image:
     img_bytes = validate_and_decode_base64(raw)
 
     try:
-        old_limit = Image.MAX_IMAGE_PIXELS
-        Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
-        try:
-            img = Image.open(io.BytesIO(img_bytes))
-            img = img.convert("RGB")
-        finally:
-            Image.MAX_IMAGE_PIXELS = old_limit
+        img = Image.open(io.BytesIO(img_bytes))
+        img = img.convert("RGB")
     except DecompressionBombError as exc:
         raise ImageTooLargeError(0, MAX_IMAGE_PIXELS, kind="pixels") from exc
     except Exception as exc:

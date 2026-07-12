@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { detectEnvironments, selectPythonEnv, type PythonEnvInfo, type SetupInfo } from '../utils/tauri'
 import { getLauncherUrl } from '../hooks/useServices'
+import { getServiceKey } from '../agent/tools/shared'
 import sealIcon from '../assets/seal.png'
 
 interface SetupWizardProps {
@@ -57,7 +58,7 @@ export function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
     try {
       const res = await fetch(`${getLauncherUrl()}/setup/install`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getServiceKey()}` },
         body: JSON.stringify({ pythonPath: selected.path, packages: selected.missing }),
       })
       const data = await res.json() as { ok: boolean; output: string }

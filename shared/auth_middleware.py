@@ -33,11 +33,10 @@ def require_service_key() -> None:
 def require_service_token(request: Request) -> None:
     """FastAPI 依赖：校验请求头中的 ``Authorization: Bearer <SERVICE_API_KEY>``。
 
-    当 ``SERVICE_API_KEY`` 为空时跳过校验（开发模式）。
+    当 ``SERVICE_API_KEY`` 为空时拒绝所有请求（防止生产环境静默绕过认证）。
     """
     if not _SERVICE_API_KEY:
-        # 开发模式下放行，但已在模块导入时打印警告
-        return
+        raise HTTPException(status_code=500, detail="服务端认证未配置")
 
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):

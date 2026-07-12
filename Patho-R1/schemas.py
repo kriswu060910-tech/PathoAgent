@@ -1,21 +1,23 @@
 """Patho-R1 API 的 Pydantic 请求/响应模型。"""
 
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class AnalyzeRequest(BaseModel):
     """病理分析请求"""
 
     image: str  # base64 data URL 或纯 base64 字符串
-    question: str = "请分析这张病理图像，描述所见并给出诊断意见。"
-    style: str = "cot"  # cot (详细推理) 或 cod (简洁推理)
+    question: str = Field(default="请分析这张病理图像，描述所见并给出诊断意见。", max_length=5000)
+    style: Literal["cot", "cod"] = "cot"  # cot (详细推理) 或 cod (简洁推理)
 
 
 class ReportRequest(BaseModel):
     """结构化报告请求"""
 
     image: str
-    clinical_info: str = ""
+    clinical_info: str = Field(default="", max_length=2000)
     template: str = "standard"  # standard / brief / detailed
 
 

@@ -6,6 +6,8 @@
 import os
 from pathlib import Path
 
+from shared import int_env
+
 # ---------------------------------------------------------------------------
 #  路径与模型
 # ---------------------------------------------------------------------------
@@ -22,22 +24,14 @@ MODEL_MAP = {
 #  推理参数
 # ---------------------------------------------------------------------------
 
-def _int_env(key: str, default: int) -> int:
-    """安全地读取整数类型环境变量，格式错误时返回默认值。"""
-    try:
-        return int(os.environ.get(key, default))
-    except (ValueError, TypeError):
-        return default
-
-
 # 推理前限制图片最大维度，防止高分辨率图片导致 OOM
-MAX_IMAGE_DIM = _int_env("PATHO_MAX_IMAGE_DIM", 512)
+MAX_IMAGE_DIM = int_env("PATHO_MAX_IMAGE_DIM", 512)
 
 # 最大生成 token 数
-MAX_NEW_TOKENS = _int_env("PATHO_MAX_NEW_TOKENS", 1024)
+MAX_NEW_TOKENS = int_env("PATHO_MAX_NEW_TOKENS", 1024)
 
 # 单次推理超时（秒），防止模型挂起永久占用锁
-INFERENCE_TIMEOUT_SECONDS = _int_env("PATHO_INFERENCE_TIMEOUT", 120)
+INFERENCE_TIMEOUT_SECONDS = int_env("PATHO_INFERENCE_TIMEOUT", 120)
 
 # ---------------------------------------------------------------------------
 #  提示词
@@ -63,4 +57,4 @@ REPORT_PROMPT = (
 # ---------------------------------------------------------------------------
 
 DEFAULT_HOST = os.environ.get("PATHO_HOST", "127.0.0.1")
-DEFAULT_PORT = _int_env("PATHO_PORT", 8001)
+DEFAULT_PORT = int_env("PATHO_PORT", 8001)
