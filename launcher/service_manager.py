@@ -288,29 +288,36 @@ class ServiceManager:
             if not started_names:
                 return
 
-            await asyncio.sleep(3)
+            # 轮询等待服务就绪（模型加载可能需要 30 秒以上）
+            healthy_set: set[str] = set()
+            max_wait = 60
+            for elapsed in range(0, max_wait, 5):
+                if elapsed > 0:
+                    await asyncio.sleep(5)
+                pending = [n for n in started_names if n not in healthy_set]
+                if not pending:
+                    break
+                ports = [self._services[n].port for n in pending]
+                results = await asyncio.gather(
+                    *(self._is_port_open(p) for p in ports)
+                )
+                for name, ok in zip(pending, results):
+                    if ok:
+                        healthy_set.add(name)
+                        logger.info(f"{self._services[name].label} 健康检查通过 ({elapsed + 5}s)")
+                    else:
+                        handle = self._processes.get(name)
+                        if handle and handle.proc.poll() is not None:
+                            logger.error(
+                                f"{self._services[name].label} 启动失败 "
+                                f"(exit code {handle.proc.returncode})，请查看日志"
+                            )
+                            self._cleanup_finished(name)
+                            healthy_set.add(name)  # 标记为已完成，不再轮询
 
-            ports = [self._services[name].port for name in started_names]
-            health_results = await asyncio.gather(
-                *(self._is_port_open(port) for port in ports)
-            )
-
-            for name, healthy in zip(started_names, health_results):
-                svc = self._services[name]
-                handle = self._processes.get(name)
-                if not handle:
-                    continue
-                if healthy:
-                    logger.info(f"{svc.label} 健康检查通过")
-                    continue
-                exit_code = handle.proc.poll()
-                if exit_code is not None:
-                    logger.error(
-                        f"{svc.label} 启动失败 (exit code {exit_code})，请查看日志"
-                    )
-                    self._cleanup_finished(name)
-                else:
-                    logger.warning(f"{svc.label} 尚未通过健康检查")
+            for name in started_names:
+                if name not in healthy_set:
+                    logger.warning(f"{self._services[name].label} 尚未通过健康检查，继续后台加载")
 
     def shutdown(self) -> None:
         """停止所有托管的服务进程。"""

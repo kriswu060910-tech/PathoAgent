@@ -94,14 +94,30 @@ class ModelManager:
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_compute_dtype=torch.bfloat16,
                 bnb_4bit_use_double_quant=True,
+                llm_int8_enable_fp32_cpu_offload=True,
             )
             logger.info(f"Loading model (4-bit NF4): {model_name} ...")
-            self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                model_name,
-                quantization_config=quant_config,
-                device_map="auto",
-                attn_implementation="sdpa",
-            )
+            try:
+                self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                    model_name,
+                    quantization_config=quant_config,
+                    device_map="auto",
+                    attn_implementation="sdpa",
+                )
+            except ValueError as e:
+                if "GPU RAM" in str(e) or "device_map" in str(e):
+                    logger.warning(f"GPU 显存不足，启用 CPU offload: {e}")
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                    self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                        model_name,
+                        quantization_config=quant_config,
+                        device_map="auto",
+                        attn_implementation="sdpa",
+                        max_memory={0: torch.cuda.get_device_properties(0).total_memory - 512 * 1024**2, "cpu": "20GB"},
+                    )
+                else:
+                    raise
         elif use_cuda:
             logger.info(f"Loading model (fp16): {model_name} ...")
             self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
